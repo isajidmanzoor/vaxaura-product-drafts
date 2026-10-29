@@ -62,6 +62,7 @@ legend { font-weight: 700; padding: 0 6px; margin-left: -6px; }
 .prefix input { border: 0; background: transparent; padding-left: 2px; }
 .inline { display: flex; gap: 8px; }
 .inline input { flex: 1; min-width: 0; }
+.inline button { flex: none; min-width: 6.5em; }
 .hint { font-size: .85rem; color: var(--warn-ink); background: var(--warn-soft); padding: 8px 12px; border-radius: 10px; margin: 10px 0 0; }
 .hint:empty { display: none; }
 .error { color: var(--bad); white-space: pre-wrap; font-size: .9rem; margin: 10px 0 0; }
@@ -174,6 +175,7 @@ summary { cursor: pointer; font-weight: 650; }
   main { padding: 12px; }
   .card { padding: 16px; }
   .grid4 { grid-template-columns: 1fr 1fr; }
+  .thumbs { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .review-head { flex-direction: column; align-items: flex-start; }
   /* Phone: numbers only, plus the name of the current step; no sideways scrolling. */
   .stepper ol { overflow: visible; justify-content: space-between; }

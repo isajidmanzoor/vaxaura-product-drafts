@@ -132,14 +132,15 @@ $('#link-form').addEventListener('submit', async (e) => {
   btn.disabled = true;
   const failed = [];
   for (const [k, url] of links.entries()) {
-    btn.textContent = links.length > 1 ? `Adding ${k + 1}/${links.length}…` : 'Adding…';
+    btn.textContent = 'Adding…';
+    btn.setAttribute('aria-label', `Adding photo ${k + 1} of ${links.length}`);
     try {
       const media = await call('fetch-photo', { url });
       state.items.push({ media, url: media.thumb });
       renderThumbs();
     } catch (err) { failed.push({ url, msg: err.message }); }
   }
-  btn.disabled = false; btn.textContent = 'Add';
+  btn.disabled = false; btn.textContent = 'Add'; btn.removeAttribute('aria-label');
   input.value = failed.map((f) => f.url).join(' ');
   $('#link-error').textContent = failed.map((f) => `${f.url.length > 60 ? f.url.slice(0, 57) + '…' : f.url}: ${f.msg}`).join('\n');
 });

@@ -370,6 +370,7 @@ const FIX = {
   reviews: () => 'Enable reviews.',
   qLength: () => 'Write a fuller long description (at least 350 words).',
   qDensity: () => 'Use the keywords less often so the text reads naturally (at most 2.3%).',
+  qKw: () => 'Make the focus keyword 2–4 words naming the product (no “price”, “Pakistan”, “buy” or “best”).',
 };
 
 function renderAudit(audit, errors) {

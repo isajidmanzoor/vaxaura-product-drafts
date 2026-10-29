@@ -67,3 +67,21 @@ test('server errors are shown in plain English', async () => {
     assert.deepEqual([locked.status, locked.body.error], [401, 'Please sign in.']);
   } finally { console.error = quiet; }
 });
+
+test('brand spelling from the product name survives Title Case', async () => {
+  const { keepBrandCase, titleCase } = await import('../lib/ai.mjs');
+  assert.equal(keepBrandCase(titleCase('best st london foundation price in pakistan'), 'ST London Matt Fusion Foundation SPF 20'), 'Best ST London Foundation Price in Pakistan');
+  assert.equal(keepBrandCase('Loreal Glycolic Face Wash – Best Glow', "L'Oréal Glycolic Bright Face Wash 100ml"), 'Loreal Glycolic Face Wash – Best Glow');
+});
+
+test('focus keyword must name the product in 2-4 words', async () => {
+  const { seoAudit } = await import('../lib/woo.mjs');
+  const fs = await import('node:fs');
+  const p = JSON.parse(fs.readFileSync(new URL('./rankmath-100.json', import.meta.url), 'utf8'));
+  const q = (kw) => { p.seo.focus_keyword = kw; return seoAudit(p).tests.find((t) => t.id === 'qKw').pass; };
+  assert.equal(q('glycolic bright face wash'), true);
+  assert.equal(q('st london foundation price in pakistan'), false);
+  assert.equal(q('face wash'), true);
+  assert.equal(q('wash'), false);
+  assert.equal(q('best face wash'), false);
+});

@@ -4,6 +4,9 @@ Upload product photos → the app researches the Pakistani market and writes a f
 you review it → it is saved on vaxaura.com as a **WooCommerce draft**. It never publishes; you
 publish from wp-admin yourself (publishing is also what starts the social bot's videos).
 
+The interface is in English and works on phones (two-column photo grid, compact step bar) and
+desktops (review form with a sticky score card), in light and dark mode.
+
 ## What it does
 
 1. **Photos**: from the phone/computer (the browser shrinks each to max 1600 px JPEG) or by pasting
@@ -18,9 +21,11 @@ publish from wp-admin yourself (publishing is also what starts the social bot's 
 4. **SEO check**: the same 16 tests Rank Math runs on a product, with the same points
    (`lib/woo.mjs` → `seoAudit`, verified against Rank Math's own editor: `test/audit.test.mjs`).
    The AI rewrites until the score is 100/100. The score updates live while you edit.
-   Two Vaxaura checks go beyond Rank Math (no points, but they trigger a rewrite): the long
-   description has 350+ words and the keyword density is at most 2.3% (Rank Math alone passed a
-   243-word description at 2.47%). If tests still fail, "Save at SEO N/100" saves anyway.
+   Three Vaxaura checks go beyond Rank Math (no points, but they trigger a rewrite): the long
+   description has 350+ words, the keyword density is at most 2.3% (Rank Math alone passed a
+   243-word description at 2.47%), and the focus keyword is 2-4 words naming the product (no
+   "price in pakistan" in the keyword or slug). SEO titles stay within 60 characters and keep the
+   brand's spelling (ST, L'Oréal). If checks still fail, "Save anyway at SEO N/100" saves anyway.
    Possible duplicates of existing products are shown before you save.
 5. **Draft**: creates the product as a draft, puts 3 photos inside the description, writes the Rank
    Math fields, and checks every field (including that shoppers cannot see it).

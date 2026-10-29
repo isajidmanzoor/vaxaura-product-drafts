@@ -33,9 +33,9 @@
       <input type="file" id="file" accept="image/*" multiple>
       <span><b>Photos chunein</b> ya yahan drag karein</span>
     </label>
-    <form id="link-form" class="linkrow">
+    <form id="link-form" class="linkrow" novalidate>
       <label>Ya photo ka link paste karein <span class="muted">(supplier, Daraz, website — kai links space se alag)</span>
-        <span class="inline"><input id="link" type="url" inputmode="url" placeholder="https://…/photo.jpg"><button id="link-add" type="submit" class="ghost">Add</button></span>
+        <span class="inline"><input id="link" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://…/photo.jpg"><button id="link-add" type="submit" class="ghost">Add</button></span>
       </label>
       <p id="link-error" class="error" role="alert"></p>
     </form>

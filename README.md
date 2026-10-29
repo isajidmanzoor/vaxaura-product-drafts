@@ -6,17 +6,22 @@ publish from wp-admin yourself (publishing is also what starts the social bot's 
 
 ## What it does
 
-1. **Photos**: the browser shrinks each photo (max 1600 px JPEG) and uploads it to the WordPress
-   Media Library. The first photo becomes the featured image.
+1. **Photos**: from the phone/computer (the browser shrinks each to max 1600 px JPEG) or by pasting
+   photo links (supplier site, Daraz, any public image; the server downloads them and refuses
+   internal addresses). They go to the WordPress Media Library; the first is the featured image.
 2. **Research**: Gemini (`gemini-3.6-flash`) identifies the product from the photos and proposes
    search phrases; the server then reads what people in Pakistan type into Google (Google
    autocomplete, `gl=pk`) and the matching Daraz.pk listings (price, sold count, rating, link).
-3. **Listing** (`gemini-3.8-flash`, falls back to 3.6 / 3.5 Flash-Lite; JSON output): title, slug, short and long description with FAQ,
+3. **Listing** (`gemini-3.6-flash`, falls back to 3.8 / 3.5 Flash-Lite; JSON output): title, slug, short and long description with FAQ,
    categories, tags, suggested price, stock, weight/size, attributes, alt text per photo, Rank Math
    SEO title/description/focus keyword, and an owner note (what to confirm + competitor prices).
 4. **SEO check**: the same 16 tests Rank Math runs on a product, with the same points
    (`lib/woo.mjs` → `seoAudit`, verified against Rank Math's own editor: `test/audit.test.mjs`).
    The AI rewrites until the score is 100/100. The score updates live while you edit.
+   Two Vaxaura checks go beyond Rank Math (no points, but they trigger a rewrite): the long
+   description has 350+ words and the keyword density is at most 2.3% (Rank Math alone passed a
+   243-word description at 2.47%). If tests still fail, "Save at SEO N/100" saves anyway.
+   Possible duplicates of existing products are shown before you save.
 5. **Draft**: creates the product as a draft, puts 3 photos inside the description, writes the Rank
    Math fields, and checks every field (including that shoppers cannot see it).
 
@@ -73,7 +78,7 @@ The dev server reads the same variables from the environment or from
 ## Files
 
 - `public/` – the page (no build step)
-- `api/*.js` – Vercel functions: `login`, `logout`, `me`, `context`, `upload`, `research`, `write`, `audit`, `draft`
+- `api/*.js` – Vercel functions: `login`, `logout`, `me`, `context`, `upload`, `fetch-photo`, `research`, `write`, `audit`, `draft`
 - `lib/woo.mjs` – WordPress/WooCommerce/Rank Math client, SEO audit, draft creation and checks
 - `lib/ai.mjs` – Gemini research, listing and SEO repair loop
 - `lib/http.mjs` – login cookie and route wrapper

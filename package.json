@@ -1,0 +1,11 @@
+{
+  "name": "vaxaura-product-drafts",
+  "private": true,
+  "type": "module",
+  "description": "Product photos -> AI research + SEO listing -> WooCommerce DRAFT on vaxaura.com",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "node cli/dev-server.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

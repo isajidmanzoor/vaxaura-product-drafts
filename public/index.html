@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Vaxaura Product Drafts</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23111'/%3E%3Cpath d='M8 9l8 15 8-15' stroke='%23d4af37' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><span class="logo">V</span> Vaxaura <small>Product Drafts</small></div>
+  <button id="logout" class="ghost" hidden>Logout</button>
+</header>
+
+<main>
+  <section id="setup" class="card warn" hidden></section>
+
+  <section id="login" class="card narrow" hidden>
+    <h1>Login</h1>
+    <form id="login-form">
+      <label>Admin password <input type="password" id="password" autocomplete="current-password" required></label>
+      <button type="submit">Login</button>
+      <p id="login-error" class="error" role="alert"></p>
+    </form>
+  </section>
+
+  <section id="photos" class="card" hidden>
+    <h1>Naya product</h1>
+    <p class="muted">Product ki 3–5 photos dein (front, side, close-up, pehna hua / haath me, packaging). <b>Pehli photo featured</b> hogi; tarteeb arrows se badlein.</p>
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept="image/*" multiple>
+      <span><b>Photos chunein</b> ya yahan drag karein</span>
+    </label>
+    <ol id="thumbs" class="thumbs"></ol>
+    <label>Kuch batana ho? <span class="muted">(optional: material, stock, price, brand, size…)</span>
+      <textarea id="hints" rows="3" placeholder="e.g. stainless steel, anti-tarnish, 20 pieces stock, cost Rs 600"></textarea>
+    </label>
+    <button id="analyze" disabled>Analyze + research karo</button>
+    <p class="muted small">Draft hi banega — publish kabhi nahi hota. Publish aap khud wp-admin se karte hain.</p>
+  </section>
+
+  <section id="progress" class="card" hidden>
+    <h2>Kaam chal raha hai…</h2>
+    <ol id="steps" class="steps"></ol>
+    <p id="progress-error" class="error" role="alert"></p>
+    <button id="retry" class="ghost" hidden>Dobara try karo</button>
+  </section>
+
+  <section id="review" hidden>
+    <div class="review-grid">
+      <form id="form" class="card">
+        <h2>Listing check karein</h2>
+        <p class="muted small">Sab kuch edit ho sakta hai. Score har tabdeeli par dobara check hota hai.</p>
+
+        <fieldset>
+          <legend>Basic</legend>
+          <label>Product name <input name="name" required></label>
+          <label>URL slug <input name="slug" required></label>
+          <div class="row">
+            <label>Regular price (Rs) <input name="regular_price" inputmode="numeric" required></label>
+            <label>Sale price (Rs) <input name="sale_price" inputmode="numeric"></label>
+          </div>
+          <p class="note">Prices sirf <b>suggestion</b> hain — research neeche dekh kar khud tay karein.</p>
+          <div class="row">
+            <label>SKU <input name="sku" required></label>
+            <label>Stock <input name="stock_quantity" inputmode="numeric"></label>
+          </div>
+          <div class="row3">
+            <label>Weight (kg) <input name="weight"></label>
+            <label>L (cm) <input name="length"></label>
+            <label>W (cm) <input name="width"></label>
+            <label>H (cm) <input name="height"></label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Category &amp; tags</legend>
+          <div id="cats" class="chips"></div>
+          <label>Tags <span class="muted">(comma se alag)</span> <input name="tags"></label>
+          <label>Attributes <span class="muted">(har line: Name: value)</span> <textarea name="attributes" rows="3"></textarea></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>SEO (Rank Math)</legend>
+          <label>Focus keyword <span class="muted">(pehla = focus, baqi secondary)</span> <input name="focus_keyword" required></label>
+          <label>SEO title <span class="count" data-for="seo_title"></span> <input name="seo_title" required></label>
+          <label>Meta description <span class="count" data-for="seo_description"></span> <textarea name="seo_description" rows="3" required></textarea></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Photos (pehli = featured)</legend>
+          <div id="alts" class="alts"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Descriptions</legend>
+          <label>Short description (HTML) <textarea name="short_description" rows="6" required></textarea></label>
+          <label>Long description (HTML) <textarea name="description" rows="16" required></textarea></label>
+          <details><summary>Preview</summary><div id="preview" class="preview"></div></details>
+        </fieldset>
+
+        <fieldset>
+          <legend>Owner note <span class="muted">(sirf wp-admin me, customers ko nahi dikhta)</span></legend>
+          <textarea name="owner_note" rows="5"></textarea>
+        </fieldset>
+      </form>
+
+      <aside class="side">
+        <div class="card sticky">
+          <div class="score"><span id="score">–</span><small>/100 Rank Math</small></div>
+          <ul id="tests" class="tests"></ul>
+          <p id="form-errors" class="error"></p>
+          <button id="save" type="button">Draft me save karo</button>
+          <p class="muted small">Status: Draft. Publish nahi hoga.</p>
+        </div>
+        <details class="card" id="research-box">
+          <summary>Research (AI + Google)</summary>
+          <div id="sources" class="sources"></div>
+          <pre id="notes" class="notes"></pre>
+        </details>
+      </aside>
+    </div>
+  </section>
+
+  <section id="done" class="card" hidden>
+    <h1>Draft ban gaya ✓</h1>
+    <p id="done-title"></p>
+    <p><a id="done-link" class="button" target="_blank" rel="noopener">wp-admin me kholein</a></p>
+    <ul id="done-checks" class="tests"></ul>
+    <ul id="done-warnings" class="warnlist"></ul>
+    <p class="muted">wp-admin me check karke <b>Publish</b> aap khud karein (publish par social bot video bhi banata hai).</p>
+    <button id="another">Ek aur product</button>
+  </section>
+</main>
+<script src="app.js" type="module"></script>
+</body>
+</html>

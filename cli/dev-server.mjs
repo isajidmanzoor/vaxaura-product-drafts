@@ -38,6 +38,10 @@ http.createServer(async (req, res) => {
   // `--fixtures <dir>` serves sample photos at /__fixtures/<name> for browser tests (local only).
   const fx = process.argv.indexOf('--fixtures');
   if (fx > 0 && url.pathname.startsWith('/__fixtures/')) {
+    // Lets a deployed copy of the page load them too (CORS + Chrome's private-network preflight).
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+    if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
     const f = path.join(process.argv[fx + 1], path.basename(decodeURIComponent(url.pathname)));
     if (!fs.existsSync(f)) { res.statusCode = 404; return res.end('not found'); }
     return fs.createReadStream(f).pipe(res);

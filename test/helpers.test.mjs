@@ -38,3 +38,32 @@ test('a placeholder for a missing photo does not count as an image', async () =>
   const t = Object.fromEntries(seoAudit(p).tests.map((x) => [x.id, x]));
   assert.equal(t.images.info, '3 image(s)'); // 2 valid placeholders + featured; {{image:4}} ignored
 });
+
+test('SEO title over 60 characters drops the brand suffix', async () => {
+  const { fitTitle } = await import('../lib/ai.mjs');
+  assert.equal(fitTitle('Black Heart Pendant – Stunning Triple Heart Necklace | Vaxaura'), 'Black Heart Pendant – Stunning Triple Heart Necklace');
+  assert.equal(fitTitle('Gold Heart Pendant – Perfect Gift | Vaxaura'), 'Gold Heart Pendant – Perfect Gift | Vaxaura');
+});
+
+test('server errors are shown in plain English', async () => {
+  const { route } = await import('../lib/http.mjs');
+  const run = async (err, opts = { auth: false }) => {
+    const out = {};
+    const res = { headersSent: false, setHeader() {}, status(c) { out.status = c; return this; }, json(b) { out.body = b; } };
+    await route('GET', () => { throw err; }, opts)({ method: 'GET', headers: {} }, res);
+    return out;
+  };
+  const quiet = console.error; console.error = () => {};
+  try {
+    const net = await run(new Error('GET /wc/v3/products: fetch failed'));
+    assert.equal(net.status, 502);
+    assert.match(net.body.error, /Could not reach vaxaura\.com/);
+    const wp = await run(new Error('POST /wc/v3/products -> HTTP 400: woocommerce_rest_product_not_created The product with SKU (X) is already present'));
+    assert.equal(wp.status, 400);
+    assert.equal(wp.body.error, 'WordPress could not complete the request: The product with SKU (X) is already present');
+    const plain = await run(Object.assign(new Error('Incorrect password.'), { status: 401 }));
+    assert.deepEqual([plain.status, plain.body.error], [401, 'Incorrect password.']);
+    const locked = await run(new Error('x'), { auth: true });
+    assert.deepEqual([locked.status, locked.body.error], [401, 'Please sign in.']);
+  } finally { console.error = quiet; }
+});

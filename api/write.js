@@ -6,6 +6,6 @@ import { write } from '../lib/ai.mjs';
 export default route('POST', async (req) => {
   const deadline = Date.now() + 270000;
   const { mediaIds, hints, notes, previous } = req.body || {};
-  if (!Array.isArray(mediaIds) || !mediaIds.length || !notes) throw Object.assign(new Error('Run the research step first'), { status: 400 });
+  if (!Array.isArray(mediaIds) || !mediaIds.length || !notes) throw Object.assign(new Error('The research step has not run yet.'), { status: 400 });
   return write({ mediaIds, hints, notes, previous, deadline, ctx: await storeContext() });
 });

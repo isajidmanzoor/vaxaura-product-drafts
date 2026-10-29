@@ -151,6 +151,8 @@ async function run() {
     state.warnings = w.warnings || [];
     fillForm(w.product);
     renderAudit(w.audit, []);
+    // Same check the Save button runs, so problems (e.g. a missing field) show before the owner edits.
+    call('audit', { product: readForm() }).then((a) => renderAudit(a.audit, a.errors)).catch(() => {});
     $('#review-warnings').innerHTML = '';
     for (const t of state.warnings) { const li = document.createElement('li'); li.textContent = t; $('#review-warnings').appendChild(li); }
     $('#review-time').textContent = `${Math.round((Date.now() - started) / 1000)} second me tayyar (${w.model}).`;
@@ -228,6 +230,9 @@ function renderAudit(audit, errors) {
     $('#tests').appendChild(li);
   }
   $('#form-errors').textContent = errors.join('\n');
+  const failing = audit.tests.filter((x) => !x.pass).length;
+  $('#score-mini').textContent = `SEO ${audit.score}/100${failing ? ` — ${failing} test(s) fail, neeche dekhein` : ' ✓'}`;
+  $('#save-anyway').hidden = true;
 }
 
 let timer;
@@ -239,12 +244,12 @@ $('#form').addEventListener('input', () => {
   }, 500);
 });
 
-$('#save').addEventListener('click', async () => {
+async function save(force) {
   const btn = $('#save');
   btn.disabled = true; btn.textContent = 'Save ho raha hai…';
   $('#form-errors').textContent = '';
   try {
-    const r = await call('draft', { product: readForm() });
+    const r = await call('draft', { product: { ...readForm(), force } });
     $('#done-title').textContent = `#${r.id} · ${F('name').value} · SEO ${r.audit.score}/100`;
     $('#done-link').href = r.editUrl;
     $('#done-checks').innerHTML = '';
@@ -260,11 +265,18 @@ $('#save').addEventListener('click', async () => {
     window.scrollTo(0, 0);
   } catch (err) {
     $('#form-errors').textContent = err.message;
-    if (err.data?.audit) renderAudit(err.data.audit, []);
+    if (err.data?.audit) {
+      renderAudit(err.data.audit, [err.message]);
+      // Only SEO tests failed (the listing is otherwise valid): the owner may still save it.
+      $('#save-anyway').textContent = `SEO ${err.data.audit.score}/100 par hi save karo`;
+      $('#save-anyway').hidden = false;
+    }
   } finally {
     btn.disabled = false; btn.textContent = 'Draft me save karo';
   }
-});
+}
+$('#save').addEventListener('click', () => save(false));
+$('#save-anyway').addEventListener('click', () => save(true));
 
 $('#another').addEventListener('click', () => {
   Object.assign(state, { items: [], media: [], notes: '', sources: [], product: null, warnings: [] });

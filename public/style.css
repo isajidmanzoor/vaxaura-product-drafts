@@ -72,8 +72,12 @@ legend { font-weight: 700; padding: 0 6px; }
 .notes { white-space: pre-wrap; font-size: .8rem; max-height: 420px; overflow: auto; background: var(--bg); padding: 10px; border-radius: 8px; }
 .warnlist li { color: var(--bad); }
 summary { cursor: pointer; font-weight: 700; }
+.score-mini { display: none; font-weight: 700; }
+#save-anyway { margin-top: 8px; }
 @media (max-width: 860px) {
   .review-grid { grid-template-columns: 1fr; }
-  .side { order: -1; } .sticky { position: static; }
+  /* Phone: read the listing first; the score card and Save come after the form. */
+  .sticky { position: static; }
+  .score-mini { display: block; }
   .row3 { grid-template-columns: 1fr 1fr; }
 }

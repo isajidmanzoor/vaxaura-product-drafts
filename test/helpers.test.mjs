@@ -21,3 +21,20 @@ test('duplicate warning', () => {
   assert.deepEqual(possibleDuplicates('Triple Heart Necklace – Black Heart Pendant', products).length, 1);
   assert.deepEqual(possibleDuplicates('Crystal Butterfly Stud Earrings', products), []);
 });
+
+test('placeholders: 4+ photos use 2-4, fewer photos also place the featured one', async () => {
+  const { placeholderList } = await import('../lib/ai.mjs');
+  assert.deepEqual(placeholderList(5), ['{{image:2}}', '{{image:3}}', '{{image:4}}']);
+  assert.deepEqual(placeholderList(3), ['{{image:1}}', '{{image:2}}', '{{image:3}}']);
+  assert.deepEqual(placeholderList(1), ['{{image:1}}']);
+});
+
+test('a placeholder for a missing photo does not count as an image', async () => {
+  const { seoAudit } = await import('../lib/woo.mjs');
+  const fs = await import('node:fs');
+  const p = JSON.parse(fs.readFileSync(new URL('./rankmath-100.json', import.meta.url), 'utf8'));
+  p.images = p.images.slice(0, 3);
+  p.description = p.description.replace('{{image:2}}', '{{image:1}}').replace('{{image:3}}', '{{image:2}}').replace('{{image:4}}', '{{image:4}}');
+  const t = Object.fromEntries(seoAudit(p).tests.map((x) => [x.id, x]));
+  assert.equal(t.images.info, '3 image(s)'); // 2 valid placeholders + featured; {{image:4}} ignored
+});

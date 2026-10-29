@@ -1,7 +1,8 @@
 const $ = (s) => document.querySelector(s);
 const show = (id) => ['login', 'photos', 'progress', 'review', 'done'].forEach((s) => { $('#' + s).hidden = s !== id; });
 
-const state = { files: [], media: [], notes: '', sources: [], product: null, ctx: null, hints: '' };
+// items: photos in order; each keeps its Media Library upload (media) once uploaded, so reordering is free.
+const state = { items: [], media: [], notes: '', sources: [], product: null, ctx: null, hints: '', warnings: [] };
 
 async function call(path, body) {
   const res = await fetch('/api/' + path, body === undefined ? {} : {
@@ -39,26 +40,26 @@ $('#logout').addEventListener('click', async () => { await call('logout', {}); l
 function renderThumbs() {
   const ol = $('#thumbs');
   ol.innerHTML = '';
-  state.files.forEach((f, i) => {
+  state.items.forEach((it, i) => {
     const li = document.createElement('li');
     li.innerHTML = `<img alt=""><span class="num ${i === 0 ? 'feat' : ''}">${i === 0 ? '1 · featured' : i + 1}</span>
       <div class="tools"><button type="button" data-a="up" aria-label="Pehle">←</button><button type="button" data-a="del" aria-label="Hatao">×</button><button type="button" data-a="down" aria-label="Baad me">→</button></div>`;
-    li.querySelector('img').src = f.url;
+    li.querySelector('img').src = it.url;
     li.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
       const a = b.dataset.a;
-      if (a === 'del') state.files.splice(i, 1);
-      if (a === 'up' && i > 0) [state.files[i - 1], state.files[i]] = [state.files[i], state.files[i - 1]];
-      if (a === 'down' && i < state.files.length - 1) [state.files[i + 1], state.files[i]] = [state.files[i], state.files[i + 1]];
-      state.media = []; // order changed: upload again so photo N matches media N
+      if (a === 'del') state.items.splice(i, 1);
+      if (a === 'up' && i > 0) [state.items[i - 1], state.items[i]] = [state.items[i], state.items[i - 1]];
+      if (a === 'down' && i < state.items.length - 1) [state.items[i + 1], state.items[i]] = [state.items[i], state.items[i + 1]];
       renderThumbs();
     }));
     ol.appendChild(li);
   });
-  $('#analyze').disabled = !state.files.length;
+  $('#analyze').disabled = !state.items.length;
+  $('#photo-count').textContent = state.items.length && state.items.length < 4
+    ? `${state.items.length} photo — Rank Math ke poore points ke liye 4 photos behtar hain.` : '';
 }
 function addFiles(list) {
-  for (const file of list) if (file.type.startsWith('image/')) state.files.push({ file, url: URL.createObjectURL(file) });
-  state.media = [];
+  for (const file of list) if (file.type.startsWith('image/') || /\.(heic|heif)$/i.test(file.name)) state.items.push({ file, url: URL.createObjectURL(file) });
   renderThumbs();
 }
 $('#file').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
@@ -66,6 +67,27 @@ const drop = $('#drop');
 ['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over'); }));
 ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', (e) => addFiles(e.dataTransfer.files));
+
+// Photo links (supplier site, Daraz, WhatsApp web...): the server downloads them into the Media Library.
+$('#link-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = $('#link');
+  const links = input.value.split(/\s+/).filter((u) => /^https?:\/\//i.test(u));
+  if (!links.length) { $('#link-error').textContent = 'https:// se shuru hone wala photo link paste karein'; return; }
+  $('#link-error').textContent = '';
+  const btn = $('#link-add');
+  btn.disabled = true;
+  for (const url of links) {
+    btn.textContent = `Laa raha hun… (${links.indexOf(url) + 1}/${links.length})`;
+    try {
+      const media = await call('fetch-photo', { url });
+      state.items.push({ media, url: media.thumb });
+      renderThumbs();
+    } catch (err) { $('#link-error').textContent = `${url.slice(0, 60)}…: ${err.message}`; }
+  }
+  btn.disabled = false; btn.textContent = 'Add';
+  input.value = '';
+});
 
 // Shrinks a photo to at most 1600 px (JPEG) so each upload stays far below Vercel's 4.5 MB body limit.
 async function shrink(file) {
@@ -94,22 +116,23 @@ async function run() {
   show('progress');
   $('#steps').innerHTML = ''; $('#progress-error').textContent = ''; $('#retry').hidden = true;
   state.hints = $('#hints').value.trim();
+  const started = Date.now();
   let s;
   try {
-    if (!state.media.length) {
-      state.media = [];
-      for (const [i, f] of state.files.entries()) {
-        s = step(`Photo ${i + 1}/${state.files.length} upload ho rahi hai`);
-        state.media.push(await call('upload', { name: f.file.name, mime: 'image/jpeg', data: await shrink(f.file) }));
-        s.done(`Photo ${i + 1}/${state.files.length} uploaded`);
-      }
+    const todo = state.items.filter((it) => !it.media);
+    for (const [k, it] of todo.entries()) {
+      s = step(`Photo ${k + 1}/${todo.length} upload ho rahi hai`);
+      it.media = await call('upload', { name: it.file.name, mime: 'image/jpeg', data: await shrink(it.file) });
+      s.done(`Photo ${k + 1}/${todo.length} uploaded`);
     }
-    s = step('Photos dekh kar Google par Pakistan market research (AI)');
-    const r = await call('research', { mediaIds: state.media.map((m) => m.id), hints: state.hints });
+    state.media = state.items.map((it) => it.media);
+    const mediaIds = state.media.map((m) => m.id);
+    s = step('Photos pehchan + Google (Pakistan) aur Daraz research');
+    const r = await call('research', { mediaIds, hints: state.hints });
     Object.assign(state, { notes: r.notes, sources: r.sources });
-    s.done(`Research ho gayi (${r.sources.length} sources)`);
-    s = step('SEO listing likhi ja rahi hai (free AI: 1–4 minute)');
-    const ask = { mediaIds: state.media.map((m) => m.id), hints: state.hints, notes: state.notes };
+    s.done(`Research ho gayi: ${r.identification?.product || ''} (${r.sources.length} Daraz listings)`);
+    s = step('SEO listing likhi ja rahi hai (free AI: aam tor par 1 minute)');
+    const ask = { mediaIds, hints: state.hints, notes: state.notes };
     let w = await call('write', ask);
     s.done(`Listing tayyar — SEO ${w.audit.score}/100`);
     // Up to 2 repair rounds while a Rank Math test still fails; each round is its own request.
@@ -125,8 +148,12 @@ async function run() {
       }
     }
     state.product = w.product;
+    state.warnings = w.warnings || [];
     fillForm(w.product);
     renderAudit(w.audit, []);
+    $('#review-warnings').innerHTML = '';
+    for (const t of state.warnings) { const li = document.createElement('li'); li.textContent = t; $('#review-warnings').appendChild(li); }
+    $('#review-time').textContent = `${Math.round((Date.now() - started) / 1000)} second me tayyar (${w.model}).`;
     show('review');
     window.scrollTo(0, 0);
   } catch (err) {
@@ -240,7 +267,7 @@ $('#save').addEventListener('click', async () => {
 });
 
 $('#another').addEventListener('click', () => {
-  Object.assign(state, { files: [], media: [], notes: '', sources: [], product: null });
+  Object.assign(state, { items: [], media: [], notes: '', sources: [], product: null, warnings: [] });
   $('#hints').value = '';
   renderThumbs();
   show('photos');

@@ -36,6 +36,10 @@ legend { font-weight: 700; padding: 0 6px; }
 .drop { display: grid; place-items: center; border: 2px dashed var(--line); border-radius: 12px; padding: 26px 12px; text-align: center; cursor: pointer; font-weight: 400; }
 .drop.over { border-color: var(--gold); }
 .drop input { display: none; }
+.inline { display: flex; gap: 8px; margin-top: 4px; }
+.inline input { margin: 0; flex: 1; min-width: 0; }
+.note:empty, .warnlist:empty { display: none; }
+.warnlist { padding-left: 18px; }
 .thumbs { list-style: none; padding: 0; margin: 12px 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
 .thumbs li { position: relative; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg); }
 .thumbs img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }

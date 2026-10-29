@@ -33,7 +33,14 @@
       <input type="file" id="file" accept="image/*" multiple>
       <span><b>Photos chunein</b> ya yahan drag karein</span>
     </label>
+    <form id="link-form" class="linkrow">
+      <label>Ya photo ka link paste karein <span class="muted">(supplier, Daraz, website — kai links space se alag)</span>
+        <span class="inline"><input id="link" type="url" inputmode="url" placeholder="https://…/photo.jpg"><button id="link-add" type="submit" class="ghost">Add</button></span>
+      </label>
+      <p id="link-error" class="error" role="alert"></p>
+    </form>
     <ol id="thumbs" class="thumbs"></ol>
+    <p id="photo-count" class="note" aria-live="polite"></p>
     <label>Kuch batana ho? <span class="muted">(optional: material, stock, price, brand, size…)</span>
       <textarea id="hints" rows="3" placeholder="e.g. stainless steel, anti-tarnish, 20 pieces stock, cost Rs 600"></textarea>
     </label>
@@ -52,7 +59,8 @@
     <div class="review-grid">
       <form id="form" class="card">
         <h2>Listing check karein</h2>
-        <p class="muted small">Sab kuch edit ho sakta hai. Score har tabdeeli par dobara check hota hai.</p>
+        <p class="muted small">Sab kuch edit ho sakta hai. Score har tabdeeli par dobara check hota hai. <span id="review-time"></span></p>
+        <ul id="review-warnings" class="warnlist"></ul>
 
         <fieldset>
           <legend>Basic</legend>

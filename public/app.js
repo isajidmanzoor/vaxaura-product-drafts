@@ -3,9 +3,19 @@ const SCREENS = ['login', 'photos', 'progress', 'review', 'done'];
 const STEP_ORDER = ['photos', 'progress', 'review', 'done'];
 
 // items: photos in order; each keeps its Media Library upload (media) once uploaded, so reordering is free.
-const state = { items: [], media: [], notes: '', sources: [], market: null, facts: '', product: null, ctx: null, hints: '', warnings: [], dirty: false };
+const state = { items: [], media: [], notes: '', sources: [], market: null, facts: '', product: null, ctx: null, hints: '', warnings: [], dirty: false, saved: null, photoKey: '' };
 
-function show(id) {
+// Each screen is a browser history entry, so the phone's Back button moves between steps.
+let view = null;
+function show(id, { history: mode = 'push' } = {}) {
+  if (mode !== 'none' && id !== view) {
+    // The research screen is passed through, not returned to: the next screen takes its place.
+    if (mode === 'push' && view && view !== 'login' && view !== 'progress' && id !== 'login') window.history.pushState({ view: id }, '');
+    else window.history.replaceState({ view: id }, '');
+  }
+  view = id;
+  if (id === 'photos') syncPhotoActions();
+  if (id === 'review') syncSaved();
   for (const s of SCREENS) $('#' + s).hidden = s !== id;
   const stepper = $('#stepper');
   stepper.hidden = id === 'login';
@@ -100,6 +110,7 @@ function renderThumbs() {
   $('#analyze').disabled = !n;
   $('#photo-count').textContent = n && n < 4
     ? `${n} photo${n > 1 ? 's' : ''} added. 4 or more photos give the listing full Rank Math image points.` : '';
+  syncPhotoActions();
 }
 
 function addFiles(list) {
@@ -191,6 +202,7 @@ function startTimer() {
 let running = false;
 async function run() {
   if (running) return;
+  if (state.product && !state.saved && state.dirty && !confirm('Write a new listing? The current listing and your edits will be replaced.')) return;
   running = true;
   show('progress');
   $('#steps').innerHTML = ''; $('#progress-error').textContent = ''; $('#progress-actions').hidden = true;
@@ -232,6 +244,8 @@ async function run() {
       }
     }
     state.product = w.product;
+    state.saved = null;
+    state.photoKey = photoKey();
     state.warnings = w.warnings || [];
     fillForm(w.product);
     renderAudit(w.audit, []);
@@ -254,6 +268,38 @@ async function run() {
 $('#analyze').addEventListener('click', run);
 $('#retry').addEventListener('click', run);
 $('#back').addEventListener('click', () => show('photos'));
+$('#review-back').addEventListener('click', () => show('photos'));
+$('#to-review').addEventListener('click', () => show('review'));
+$('#done-back').addEventListener('click', () => show('review'));
+
+const photoKey = () => state.items.map((it) => it.media?.id ?? it.url).join(',');
+// "Back to the listing" only while the photos are the ones the listing was written for.
+function syncPhotoActions() {
+  const can = !!state.product && photoKey() === state.photoKey;
+  $('#to-review').hidden = !can;
+  $('#analyze').textContent = state.product ? 'Research & write a new listing' : 'Research & write listing';
+}
+
+// After saving, the review is for reference: saving again would make a second draft.
+function syncSaved() {
+  const s = state.saved;
+  $('#saved-banner').hidden = !s;
+  $('#saved-banner').innerHTML = s
+    ? `Saved as draft <strong>#${s.id}</strong>. Further changes are made in WordPress: <a href="${s.editUrl}" target="_blank" rel="noopener">open the draft</a>.` : '';
+  $('#save').hidden = !!s;
+  if (s) $('#save-anyway').hidden = true;
+}
+
+window.addEventListener('popstate', (e) => {
+  let to = e.state?.view || 'photos';
+  if (running) to = 'progress'; // research keeps going; stay on its screen
+  else if (to === 'progress') to = state.product ? 'review' : 'photos';
+  if ((to === 'review' || to === 'done') && !state.product) to = 'photos';
+  if (to === 'review' && view === 'photos' && $('#to-review').hidden) to = 'photos'; // photos changed since
+  if (to === 'done' && !state.saved) to = 'review';
+  if (to === 'login' || view === 'login') to = view; // sign-in is not a step
+  show(to, { history: to === (e.state?.view || 'photos') ? 'none' : 'replace' });
+});
 
 // 'Possible duplicate of #271 [publish] "Name"' -> a readable sentence.
 const STATUS = { publish: 'live', draft: 'draft', pending: 'pending review', private: 'private' };
@@ -450,6 +496,7 @@ async function save(force) {
   try {
     const r = await call('draft', { product: { ...readForm(), force } });
     state.dirty = false;
+    state.saved = { id: r.id, editUrl: r.editUrl };
     const name = F('name').value.trim();
     $('#done-title').textContent = `#${r.id} · ${name} · SEO ${r.audit.score}/100`;
     $('#done-link').href = r.editUrl;
@@ -487,7 +534,7 @@ $('#save-anyway').addEventListener('click', () => save(true));
 // ---------- 4. saved ----------
 $('#another').addEventListener('click', () => {
   for (const it of state.items) if (it.file) URL.revokeObjectURL(it.url);
-  Object.assign(state, { items: [], media: [], notes: '', sources: [], market: null, facts: '', product: null, warnings: [], dirty: false });
+  Object.assign(state, { items: [], media: [], notes: '', sources: [], market: null, facts: '', product: null, warnings: [], dirty: false, saved: null, photoKey: '' });
   $('#hints').value = ''; $('#link').value = ''; $('#link-error').textContent = '';
   renderThumbs();
   show('photos');

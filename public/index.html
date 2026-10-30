@@ -72,6 +72,7 @@
     <textarea id="hints" rows="3" placeholder="e.g. stainless steel, anti-tarnish, 20 pieces in stock, cost price Rs 600"></textarea>
 
     <div class="actions">
+      <button id="to-review" type="button" class="secondary" hidden>Back to the listing →</button>
       <button id="analyze" type="button" class="primary wide" disabled>Research &amp; write listing</button>
     </div>
     <p class="small muted center">Products are saved as drafts only. You publish them from WordPress when you are ready.</p>
@@ -94,6 +95,7 @@
 
   <!-- 3. Review -->
   <section id="review" hidden>
+    <button id="review-back" type="button" class="link-btn back-btn">← Back to photos</button>
     <div class="review-head card">
       <div>
         <h1 tabindex="-1">Review the listing</h1>
@@ -101,6 +103,7 @@
       </div>
       <div id="score-chip" class="score-chip" aria-live="polite"></div>
     </div>
+    <p id="saved-banner" class="banner info" hidden></p>
     <ul id="review-warnings" class="banner warn list"></ul>
 
     <div class="review-grid">
@@ -192,6 +195,7 @@
 
   <!-- 4. Saved -->
   <section id="done" class="card narrow-wide" hidden>
+    <button id="done-back" type="button" class="link-btn back-btn">← Back to the listing</button>
     <div class="success-icon" aria-hidden="true">✓</div>
     <h1 tabindex="-1">Draft saved</h1>
     <p id="done-title" class="muted"></p>

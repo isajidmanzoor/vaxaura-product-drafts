@@ -5,15 +5,22 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { seoAudit, slugify, nextSku } from '../lib/woo.mjs';
 
-const fixture = () => JSON.parse(fs.readFileSync(new URL('./rankmath-100.json', import.meta.url), 'utf8'));
+// facts: what the owner's notes and the label text confirm (the fixture's FAQ calls it "original").
+const fixture = () => ({ ...JSON.parse(fs.readFileSync(new URL('./rankmath-100.json', import.meta.url), 'utf8')), facts: 'Original L\'Oréal Paris product. Label: dermatologically tested' });
 const byId = (a) => Object.fromEntries(a.tests.map((t) => [t.id, t]));
 
 test('matches Rank Math on a real draft', () => {
   const a = seoAudit(fixture());
   assert.equal(a.score, 100);
-  assert.equal(a.fixable.length, 0);
+  assert.deepEqual(a.fixable.map((x) => x.id), []);
   assert.equal(byId(a).length.info, '524 words');
   assert.equal(byId(a).density.info, '2.29%');
+});
+
+test('"original" without the owner confirming it is sent back to the AI', () => {
+  const a = seoAudit({ ...fixture(), facts: '' });
+  assert.equal(a.score, 100); // no Rank Math points involved
+  assert.deepEqual(a.fixable.map((x) => x.id), ['qClaims']);
 });
 
 test('fails when the focus keyword only appears with an accent', () => {

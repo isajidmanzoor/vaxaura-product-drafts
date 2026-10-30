@@ -151,7 +151,15 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .preview { margin-top: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--field); overflow-wrap: anywhere; }
 .preview img { display: block; max-width: 260px; height: auto; margin: 10px auto; border-radius: 10px; }
 summary { cursor: pointer; font-weight: 650; }
-.sources { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 8px; }
+.sources { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 10px; }
+#market h3 { font-size: .9rem; margin: 14px 0 6px; }
+.price-line { font-size: 1.15rem; font-weight: 700; margin-bottom: 6px; }
+.why { margin: 0 0 10px; padding-left: 18px; font-size: .85rem; }
+.why li + li { margin-top: 4px; }
+.match { display: inline-block; min-width: 72px; padding: 1px 8px; border-radius: 6px; font-size: .78rem; font-weight: 700; text-align: center; }
+.match.exact { background: var(--ok-soft); color: var(--ok); }
+.match.similar { background: var(--gold-soft); color: var(--warn-ink); }
+.sources .meta { display: block; color: var(--muted); font-size: .78rem; margin-left: 80px; }
 .sources li { font-size: .85rem; }
 .sources a { color: var(--gold); text-decoration: none; overflow-wrap: anywhere; }
 .sources a:hover { text-decoration: underline; }

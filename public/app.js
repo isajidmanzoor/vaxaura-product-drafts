@@ -3,7 +3,7 @@ const SCREENS = ['login', 'photos', 'progress', 'review', 'done'];
 const STEP_ORDER = ['photos', 'progress', 'review', 'done'];
 
 // items: photos in order; each keeps its Media Library upload (media) once uploaded, so reordering is free.
-const state = { items: [], media: [], notes: '', sources: [], product: null, ctx: null, hints: '', warnings: [], dirty: false };
+const state = { items: [], media: [], notes: '', sources: [], market: null, facts: '', product: null, ctx: null, hints: '', warnings: [], dirty: false };
 
 function show(id) {
   for (const s of SCREENS) $('#' + s).hidden = s !== id;
@@ -210,12 +210,12 @@ async function run() {
 
     s = step('Identifying the product and researching the Pakistani market');
     const r = await call('research', { mediaIds, hints: state.hints });
-    Object.assign(state, { notes: r.notes, sources: r.sources });
-    const k = r.sources.length;
-    s.done(`Identified: ${r.identification?.product || 'product'} · ${k ? `${k} Daraz listing${k === 1 ? '' : 's'} compared` : 'no Daraz match found'}`);
+    Object.assign(state, { notes: r.notes, sources: r.sources, market: r.market, facts: r.facts });
+    const ex = r.market?.exact.length || 0, si = r.market?.similar.length || 0;
+    s.done(`Identified: ${r.identification?.product || 'product'}${r.identification?.brand ? ` (${r.identification.brand})` : ''} · Daraz: ${ex} same, ${si} similar of ${r.market?.total ?? 0}`);
 
     s = step('Writing the SEO listing');
-    const ask = { mediaIds, hints: state.hints, notes: state.notes };
+    const ask = { mediaIds, hints: state.hints, notes: state.notes, market: state.market, facts: state.facts };
     let w = await call('write', ask);
     s.done(`Listing written · SEO ${w.audit.score}/100`);
     // Up to 2 repair rounds while a test still fails; each round is its own request.
@@ -301,19 +301,45 @@ function fillForm(p) {
     alts.appendChild(row);
   });
 
-  const list = $('#sources');
-  list.innerHTML = '';
-  for (const src of state.sources) {
-    const li = document.createElement('li');
-    const a = document.createElement('a');
-    a.href = src.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
-    a.textContent = src.title.replace(/^Daraz:\s*/, 'Daraz · ').replace(/·\s*·/g, '·');
-    li.appendChild(a);
-    list.appendChild(li);
-  }
-  if (!state.sources.length) list.innerHTML = '<li class="muted">No Daraz listings were found for this item.</li>';
+  renderMarket(state.market);
   $('#notes').textContent = state.notes;
   updateLive();
+}
+
+// Market evidence: how the price was suggested and which Daraz listings it rests on.
+const rs = (n) => `Rs ${Number(n).toLocaleString('en-PK')}`;
+function renderMarket(m) {
+  const box = $('#market');
+  box.innerHTML = '';
+  const add = (tag, text, cls) => { const el = document.createElement(tag); el.textContent = text; if (cls) el.className = cls; box.appendChild(el); return el; };
+  if (!m) { add('p', 'No market data for this listing.', 'muted'); $('#price-evidence').textContent = ''; return; }
+  const p = m.pricing || {};
+  if (p.sale) add('p', `Suggested: ${rs(p.regular)} → ${rs(p.sale)}`, 'price-line');
+  const why = add('ul', '', 'why');
+  for (const w of p.why || []) { const li = document.createElement('li'); li.textContent = w; why.appendChild(li); }
+  add('p', `${m.total} Daraz listings checked${m.aiChecked ? ', the closest ones compared with your photo by AI' : ''}: ${m.exact.length} same product, ${m.similar.length} similar.`, 'small muted');
+  for (const [label, list, cls] of [['Same product', m.exact, 'exact'], ['Similar', m.similar, 'similar']]) {
+    if (!list.length) continue;
+    add('h3', label);
+    const ul = add('ul', '', 'sources');
+    for (const it of list.slice(0, 6)) {
+      const li = document.createElement('li');
+      const badge = document.createElement('span');
+      badge.className = `match ${cls}`; badge.textContent = rs(it.price);
+      const a = document.createElement('a');
+      a.href = it.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      a.textContent = it.name.length > 80 ? it.name.slice(0, 77) + '…' : it.name;
+      const meta = document.createElement('span');
+      meta.className = 'meta';
+      meta.textContent = [it.original && it.original > it.price ? `was ${rs(it.original)}` : '', it.reviews ? `${it.reviews} reviews` : '', it.rating ? `${it.rating}★` : ''].filter(Boolean).join(' · ');
+      li.append(badge, ' ', a, ' ', meta);
+      ul.appendChild(li);
+    }
+  }
+  const ex = p.exact, si = p.similar;
+  $('#price-evidence').textContent = p.basis === 'notes' ? 'Prices taken from your notes.'
+    : ex ? `Market for the same product: ${rs(ex.min)}–${rs(ex.max)} (${ex.n} listing${ex.n > 1 ? 's' : ''}).`
+      : si ? `No exact match; similar items sell for ${rs(si.min)}–${rs(si.max)}.` : 'No market prices found — please check the price.';
 }
 
 function readForm() {
@@ -330,6 +356,7 @@ function readForm() {
     images: state.media.map((m, i) => ({ media_id: m.id, alt: n($(`[data-alt="${i}"]`)?.value) })),
     seo: { focus_keyword: n(F('focus_keyword').value), title: n(F('seo_title').value), description: n(F('seo_description').value) },
     short_description: F('short_description').value, description: F('description').value, owner_note: F('owner_note').value,
+    facts: state.facts,
   };
 }
 
@@ -371,6 +398,7 @@ const FIX = {
   qLength: () => 'Write a fuller long description (at least 350 words).',
   qDensity: () => 'Use the keywords less often so the text reads naturally (at most 2.3%).',
   qKw: () => 'Make the focus keyword 2–4 words naming the product (no “price”, “Pakistan”, “buy” or “best”).',
+  qClaims: (t) => `Remove or soften ${t.info} — neither your notes nor the label confirm it (add it to your notes if it is true).`,
 };
 
 function renderAudit(audit, errors) {
@@ -459,7 +487,7 @@ $('#save-anyway').addEventListener('click', () => save(true));
 // ---------- 4. saved ----------
 $('#another').addEventListener('click', () => {
   for (const it of state.items) if (it.file) URL.revokeObjectURL(it.url);
-  Object.assign(state, { items: [], media: [], notes: '', sources: [], product: null, warnings: [], dirty: false });
+  Object.assign(state, { items: [], media: [], notes: '', sources: [], market: null, facts: '', product: null, warnings: [], dirty: false });
   $('#hints').value = ''; $('#link').value = ''; $('#link-error').textContent = '';
   renderThumbs();
   show('photos');

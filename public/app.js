@@ -338,8 +338,8 @@ function renderMarket(m) {
   }
   const ex = p.exact, si = p.similar;
   $('#price-evidence').textContent = p.basis === 'notes' ? 'Prices taken from your notes.'
-    : ex ? `Market for the same product: ${rs(ex.min)}–${rs(ex.max)} (${ex.n} listing${ex.n > 1 ? 's' : ''}).`
-      : si ? `No exact match; similar items sell for ${rs(si.min)}–${rs(si.max)}.` : 'No market prices found — please check the price.';
+    : ex ? `Market for the same product: ${ex.min === ex.max ? rs(ex.min) : `${rs(ex.min)}–${rs(ex.max)}`} (${ex.n} listing${ex.n > 1 ? 's' : ''}).`
+      : si ? `No exact match; similar items sell for ${si.min === si.max ? rs(si.min) : `${rs(si.min)}–${rs(si.max)}`}.` : 'No market prices found — please check the price.';
 }
 
 function readForm() {

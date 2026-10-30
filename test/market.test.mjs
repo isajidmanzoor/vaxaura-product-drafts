@@ -80,3 +80,14 @@ test('claims the photos cannot prove are flagged unless notes or label say so', 
   assert.deepEqual(unsupportedClaims('Original ST London foundation, waterproof formula', 'original st london, label: waterproof'), []);
   assert.deepEqual(unsupportedClaims('Gold-tone heart pendant with crystal-style stones', ''), []);
 });
+
+test('a key term that only repeats the type is not used in searches', () => {
+  const q = queryPlan({ brand: 'EMINENT', product_type: 'face wash', key_terms: ['citrus glow', 'vitamin c', 'facewash'] });
+  assert.ok(q.every((x) => !/facewash face wash/.test(x)), q.join(' | '));
+  assert.ok(q.includes('eminent face wash'), q.join(' | '));
+});
+
+test('reasons read well for a single listing', () => {
+  const a = suggestPrice({ similar: [{ price: 1000 }], shop: [{ sale_price: '1199' }, { sale_price: '1199' }], hints: {} });
+  assert.match(a.why[0], /1 listing, Rs 1000\./);
+});

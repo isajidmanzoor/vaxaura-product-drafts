@@ -14,6 +14,7 @@ function show(id, { history: mode = 'push' } = {}) {
     else window.history.replaceState({ view: id }, '');
   }
   view = id;
+  if (id !== 'login') persist();
   if (id === 'photos') syncPhotoActions();
   if (id === 'review') syncSaved();
   for (const s of SCREENS) $('#' + s).hidden = s !== id;
@@ -54,8 +55,10 @@ async function start() {
   if (!me.loggedIn) return show('login');
   $('#logout').hidden = false;
   state.ctx = await call('context');
-  // After a re-login mid-way, go back to where the owner was.
-  show(state.product ? 'review' : 'photos');
+  // First visit of this page: bring back work kept from before. After a re-login mid-way: carry on.
+  const kept = restored ? null : await restore().catch(() => null);
+  restored = true;
+  show(kept || (state.product ? 'review' : 'photos'), { history: 'replace' });
 }
 
 $('#login-form').addEventListener('submit', async (e) => {
@@ -68,8 +71,10 @@ $('#login-form').addEventListener('submit', async (e) => {
   finally { btn.disabled = false; btn.textContent = 'Sign in'; }
 });
 $('#logout').addEventListener('click', async () => {
-  if (state.dirty && !confirm('Sign out? The listing you are editing has not been saved.')) return;
+  if (state.dirty && !confirm('Sign out? The listing you are editing has not been saved and will be removed from this device.')) return;
   state.dirty = false;
+  restored = false; // nothing more is kept from this page
+  await clearKept();
   await call('logout', {}).catch(() => {});
   location.reload();
 });
@@ -96,7 +101,7 @@ function renderThumbs() {
       b.type = 'button'; b.textContent = text; b.disabled = disabled;
       b.setAttribute('aria-label', label); b.title = label;
       b.addEventListener('click', () => {
-        if (act === 'del') state.items.splice(i, 1);
+        if (act === 'del') forget(state.items.splice(i, 1)[0]);
         if (act === 'up') [state.items[i - 1], state.items[i]] = [state.items[i], state.items[i - 1]];
         if (act === 'down') [state.items[i + 1], state.items[i]] = [state.items[i], state.items[i + 1]];
         renderThumbs();
@@ -111,13 +116,17 @@ function renderThumbs() {
   $('#photo-count').textContent = n && n < 4
     ? `${n} photo${n > 1 ? 's' : ''} added. 4 or more photos give the listing full Rank Math image points.` : '';
   syncPhotoActions();
+  persist();
 }
 
 function addFiles(list) {
   const rejected = [];
   for (const file of list) {
-    if (file.type.startsWith('image/') || /\.(heic|heif)$/i.test(file.name)) state.items.push({ file, url: URL.createObjectURL(file) });
-    else rejected.push(file.name);
+    if (file.type.startsWith('image/') || /\.(heic|heif)$/i.test(file.name)) {
+      const key = keyFor();
+      state.items.push({ file, key, url: URL.createObjectURL(file) });
+      files('readwrite', (s) => s.put(file, key)).catch(() => {}); // kept in case the page is left before uploading
+    } else rejected.push(file.name);
   }
   $('#link-error').textContent = rejected.length ? `Not a photo, skipped: ${rejected.join(', ')}` : '';
   renderThumbs();
@@ -215,8 +224,10 @@ async function run() {
     for (const [k, it] of todo.entries()) {
       s = step(`Uploading photo ${k + 1} of ${todo.length}`);
       it.media = await call('upload', { name: it.file.name, mime: 'image/jpeg', data: await shrink(it.file) });
+      forget(it); // uploaded: the Media Library copy is kept instead of the file
       s.done(`Photo ${k + 1} of ${todo.length} uploaded`);
     }
+    persist(true);
     state.media = state.items.map((it) => it.media);
     const mediaIds = state.media.map((m) => m.id);
 
@@ -247,12 +258,12 @@ async function run() {
     state.saved = null;
     state.photoKey = photoKey();
     state.warnings = w.warnings || [];
+    $('#restored').hidden = true;
     fillForm(w.product);
     renderAudit(w.audit, []);
     // Same check the Save button runs, so problems (e.g. a missing field) show straight away.
     refreshAudit();
-    $('#review-warnings').innerHTML = '';
-    for (const t of state.warnings) { const li = document.createElement('li'); li.textContent = duplicateText(t); $('#review-warnings').appendChild(li); }
+    renderWarnings();
     $('#review-time').textContent = `Ready in ${Math.round((Date.now() - started) / 1000)} s.`;
     state.dirty = true;
     show('review');
@@ -263,6 +274,7 @@ async function run() {
   } finally {
     stop();
     running = false;
+    persist(); // e.g. photos uploaded before an error
   }
 }
 $('#analyze').addEventListener('click', run);
@@ -272,7 +284,7 @@ $('#review-back').addEventListener('click', () => show('photos'));
 $('#to-review').addEventListener('click', () => show('review'));
 $('#done-back').addEventListener('click', () => show('review'));
 
-const photoKey = () => state.items.map((it) => it.media?.id ?? it.url).join(',');
+const photoKey = () => state.items.map((it) => it.media?.id ?? it.key).join(',');
 // "Back to the listing" only while the photos are the ones the listing was written for.
 function syncPhotoActions() {
   const can = !!state.product && photoKey() === state.photoKey;
@@ -478,11 +490,12 @@ function refreshAudit() {
 }
 $('#form').addEventListener('input', () => {
   state.dirty = true;
+  persist();
   updateLive();
   clearTimeout(timer);
   timer = setTimeout(refreshAudit, 450);
 });
-$('#form').addEventListener('change', (e) => { if (e.target.type === 'checkbox') { clearTimeout(timer); refreshAudit(); } });
+$('#form').addEventListener('change', (e) => { if (e.target.type === 'checkbox') { state.dirty = true; persist(); clearTimeout(timer); refreshAudit(); } });
 $('#form').addEventListener('submit', (e) => e.preventDefault());
 
 let saving = false;
@@ -496,24 +509,8 @@ async function save(force) {
   try {
     const r = await call('draft', { product: { ...readForm(), force } });
     state.dirty = false;
-    state.saved = { id: r.id, editUrl: r.editUrl };
-    const name = F('name').value.trim();
-    $('#done-title').textContent = `#${r.id} · ${name} · SEO ${r.audit.score}/100`;
-    $('#done-link').href = r.editUrl;
-    const checks = $('#done-checks');
-    checks.innerHTML = '';
-    for (const c of r.checks) {
-      const li = document.createElement('li');
-      li.className = c.pass ? '' : 'fail';
-      li.textContent = `${c.label}${c.info ? ' — ' + c.info : ''}`;
-      checks.appendChild(li);
-    }
-    const failed = r.checks.filter((c) => !c.pass).length;
-    $('#done-summary').textContent = failed ? `${failed} of ${r.checks.length} checks need attention` : `All ${r.checks.length} checks passed`;
-    $('#done-details').open = failed > 0;
-    const warn = $('#done-warnings');
-    warn.innerHTML = '';
-    for (const w of r.warnings) { const li = document.createElement('li'); li.textContent = duplicateText(w); warn.appendChild(li); }
+    state.saved = { id: r.id, editUrl: r.editUrl, name: F('name').value.trim(), score: r.audit.score, checks: r.checks, warnings: r.warnings };
+    renderDone(state.saved);
     show('done');
   } catch (err) {
     $('#form-errors').textContent = err.message;
@@ -531,17 +528,152 @@ async function save(force) {
 $('#save').addEventListener('click', () => save(false));
 $('#save-anyway').addEventListener('click', () => save(true));
 
+function renderWarnings() {
+  $('#review-warnings').innerHTML = '';
+  for (const t of state.warnings) { const li = document.createElement('li'); li.textContent = duplicateText(t); $('#review-warnings').appendChild(li); }
+}
+
 // ---------- 4. saved ----------
-$('#another').addEventListener('click', () => {
+function renderDone(s) {
+  $('#done-title').textContent = `#${s.id} · ${s.name} · SEO ${s.score}/100`;
+  $('#done-link').href = s.editUrl;
+  const checks = $('#done-checks');
+  checks.innerHTML = '';
+  for (const c of s.checks || []) {
+    const li = document.createElement('li');
+    li.className = c.pass ? '' : 'fail';
+    li.textContent = `${c.label}${c.info ? ' — ' + c.info : ''}`;
+    checks.appendChild(li);
+  }
+  const all = (s.checks || []).length, failed = (s.checks || []).filter((c) => !c.pass).length;
+  $('#done-summary').textContent = failed ? `${failed} of ${all} checks need attention` : `All ${all} checks passed`;
+  $('#done-details').open = failed > 0;
+  const warn = $('#done-warnings');
+  warn.innerHTML = '';
+  for (const w of s.warnings || []) { const li = document.createElement('li'); li.textContent = duplicateText(w); warn.appendChild(li); }
+}
+
+async function resetWork() {
   for (const it of state.items) if (it.file) URL.revokeObjectURL(it.url);
   Object.assign(state, { items: [], media: [], notes: '', sources: [], market: null, facts: '', product: null, warnings: [], dirty: false, saved: null, photoKey: '' });
   $('#hints').value = ''; $('#link').value = ''; $('#link-error').textContent = '';
+  $('#restored').hidden = true;
+  await clearKept();
   renderThumbs();
   show('photos');
+}
+$('#another').addEventListener('click', resetWork);
+$('#start-over').addEventListener('click', () => {
+  if (state.dirty && !confirm('Start over? The listing you are editing has not been saved and will be removed.')) return;
+  resetWork();
 });
 
+// ---------- keep the work when the page is left, reloaded or closed ----------
+// Listing, notes and uploaded photos go to localStorage; photos not uploaded yet are kept as files
+// in IndexedDB. Cleared by "Add another product", "Start over" and Sign out; kept for 7 days.
+const KEEP = 'vx-work-v1', KEEP_DAYS = 7;
+// leftDuringRun: the browser cancels the running requests while the page unloads, which ends
+// run() before 'pagehide' fires; remember that the run was cut short, not finished.
+let restored = false, keepTimer, leftDuringRun = false;
+const keyFor = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+
+function files(mode, fn) {
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open('vx-work', 1);
+    open.onupgradeneeded = () => open.result.createObjectStore('files');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      try {
+        const tx = open.result.transaction('files', mode);
+        const req = fn(tx.objectStore('files'));
+        tx.oncomplete = () => { open.result.close(); resolve(req?.result); };
+        tx.onerror = tx.onabort = () => { open.result.close(); reject(tx.error); };
+      } catch (err) { open.result.close(); reject(err); }
+    };
+  });
+}
+function forget(it) {
+  const key = it?.key;
+  if (!key) return;
+  delete it.key;
+  files('readwrite', (s) => s.delete(key)).catch(() => {});
+}
+async function clearKept() {
+  clearTimeout(keepTimer);
+  try { localStorage.removeItem(KEEP); } catch { /* blocked */ }
+  await files('readwrite', (s) => s.clear()).catch(() => {});
+}
+
+function persist(now) {
+  clearTimeout(keepTimer);
+  if (!now) { keepTimer = setTimeout(() => persist(true), 300); return; }
+  if (!restored) return; // never overwrite kept work before it was read back
+  try {
+    if (!state.items.length && !state.product && !$('#hints').value.trim()) { localStorage.removeItem(KEEP); return; }
+    localStorage.setItem(KEEP, JSON.stringify({
+      at: Date.now(), view, interrupted: running || leftDuringRun,
+      hints: $('#hints').value,
+      items: state.items.map((it) => (it.media ? { media: it.media } : { key: it.key })),
+      media: state.media, notes: state.notes, sources: state.sources, market: state.market, facts: state.facts,
+      warnings: state.warnings, saved: state.saved, photoKey: state.photoKey, dirty: state.dirty,
+      product: state.product ? readForm() : null, reviewTime: $('#review-time').textContent,
+    }));
+  } catch { /* storage full or blocked: the page still works, it just is not kept */ }
+}
+
+// Returns the screen to open, or null when nothing was kept.
+async function restore() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(KEEP)); } catch { /* unreadable: start fresh */ }
+  if (!d || typeof d !== 'object' || !(Date.now() - d.at < KEEP_DAYS * 864e5)) { await clearKept(); return null; }
+  const items = [];
+  let lost = 0;
+  for (const it of d.items || []) {
+    if (it.media) { items.push({ media: it.media, url: it.media.thumb }); continue; }
+    const file = await files('readonly', (s) => s.get(it.key)).catch(() => null);
+    if (file) items.push({ file, key: it.key, url: URL.createObjectURL(file) }); else lost++;
+  }
+  // Drop files no longer in the list (e.g. removed while the page was closing).
+  const inUse = new Set(items.map((it) => it.key).filter(Boolean));
+  await files('readwrite', (s) => {
+    const all = s.getAllKeys();
+    all.onsuccess = () => all.result.forEach((k) => inUse.has(k) || s.delete(k));
+  }).catch(() => {});
+  Object.assign(state, {
+    items, media: d.media || [], notes: d.notes || '', sources: d.sources || [], market: d.market || null, facts: d.facts || '',
+    warnings: d.warnings || [], saved: d.saved || null, photoKey: d.photoKey || '', dirty: !!d.dirty, product: d.product || null,
+  });
+  $('#hints').value = d.hints || '';
+  renderThumbs();
+  if (state.product) {
+    fillForm(state.product);
+    renderWarnings();
+    $('#review-time').textContent = d.reviewTime || '';
+    refreshAudit();
+  }
+  if (state.saved) renderDone(state.saved);
+  let to = d.interrupted ? 'photos' : d.view;
+  if (!['photos', 'review', 'done'].includes(to)) to = state.product ? 'review' : 'photos';
+  if (to !== 'photos' && !state.product) to = 'photos';
+  if (to === 'done' && !state.saved) to = 'review';
+  $('#restored-text').textContent = [
+    d.interrupted ? 'The page was left while the listing was being written, so that run stopped. Your photos and notes are kept: run it again when ready.'
+      : state.saved ? `Your last product (draft #${state.saved.id}) is shown again.` : 'Your unsaved work was restored.',
+    lost ? `${lost} photo${lost > 1 ? 's' : ''} that had not been uploaded could not be restored; please add ${lost > 1 ? 'them' : 'it'} again.` : '',
+  ].filter(Boolean).join(' ');
+  $('#restored').hidden = false;
+  return to;
+}
+
+$('#hints').addEventListener('input', () => persist());
+// Mobile browsers may close a background tab without warning: save on every hide.
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') persist(true); });
+window.addEventListener('pagehide', () => persist(true));
 window.addEventListener('beforeunload', (e) => {
-  if (state.dirty) { e.preventDefault(); e.returnValue = ''; }
+  if (running) leftDuringRun = true;
+  persist(true);
+  // Everything else is kept; only a running research would be lost.
+  if (running) { e.preventDefault(); e.returnValue = ''; }
 });
 
 start().catch((e) => { show('login'); $('#login-error').textContent = e.message; });

@@ -82,6 +82,8 @@ button, .btn { display: inline-flex; align-items: center; justify-content: cente
 .back-btn { display: inline-flex; align-items: center; margin: 0 0 8px -8px; }
 .banner.info { background: var(--card); border: 1px solid var(--gold); color: var(--ink); }
 .banner.info a { color: var(--gold); }
+.restored { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
+.restored .link-btn { color: var(--gold); padding: 4px 0; min-height: 0; }
 .wide { width: 100%; }
 button:disabled { opacity: .45; cursor: not-allowed; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 12px; }

@@ -1120,7 +1120,11 @@ function renderCannibal(r) {
     for (const l of g.links) card.appendChild(el('p', `#${l.a} ↔ #${l.b}: ${l.reason}`, 'small muted'));
     for (const f of g.fixes) {
       const p = el('p', null, 'hint');
-      if (f.to) {
+      if (f.type === 'secondary') {
+        p.append(`Fix #${f.id}: remove the secondary keyword${f.drop.length > 1 ? 's' : ''} `, el('strong', f.drop.map((k) => `“${k}”`).join(', ')),
+          ` (another product’s focus keyword). The focus keyword “${f.from}” and the URL stay the same.`);
+        p.append(' ', fixButton(f.id, f.to));
+      } else if (f.to) {
         p.append(`Fix #${f.id}: change the focus keyword from “${f.from || 'none'}” to `, el('strong', `“${f.to}”`), ' and the URL to ', el('code', `/product/${f.slug}/`), '.');
         if (f.alternatives.length > 1) p.append(` Other free searches: ${f.alternatives.slice(1).join(', ')}.`);
         if (f.live) p.append(' ', REDIRECT_NOTE);

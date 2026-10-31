@@ -171,3 +171,14 @@ test('alternatives with the product’s own words come before generic searches',
   const fix = r.groups[0].fixes[0];
   assert.equal(fix.to, 'gold heart pendant');
 });
+
+test('a clash through a secondary keyword is fixed by removing it, not by a new focus keyword', async () => {
+  const a = product(498, 'Gold Pearl Necklace', 'gold-pearl-necklace-vaxaura', 'gold pearl necklace');
+  const b = product(510, 'White Enamel Pendant', 'white-enamel-pendant-vaxaura', 'white enamel pendant, gold pearl necklace', 'publish');
+  const r = await cannibalReport([a, b], cats, { suggest: async () => [] });
+  const fix = r.groups[0].fixes[0];
+  assert.equal(r.groups[0].keep, 498);
+  assert.equal(fix.type, 'secondary');
+  assert.deepEqual(fix.drop, ['gold pearl necklace']);
+  assert.equal(fix.to, 'white enamel pendant');
+});

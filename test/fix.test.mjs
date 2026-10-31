@@ -73,3 +73,15 @@ test('old and new keyword side by side become one', () => {
   assert.equal(replaceInText('<p>Couple Watches Black Metal – Couple Watches set</p>', 'couple watches black metal', 'couple watches').html, '<p>Couple Watches set</p>');
   assert.equal(replaceInText('<p>couple watches and couple watches</p>', 'x y', 'couple watches').html, '<p>couple watches and couple watches</p>'); // only after a replacement
 });
+
+test('only a secondary keyword clashes: it is dropped, URL and titles stay', () => {
+  const p510 = product({ id: 510, slug: 'white-enamel-pendant-vaxaura', meta_data: [{ key: 'rank_math_focus_keyword', value: 'white enamel pendant, gold pearl necklace, heart charm' },
+    { key: 'rank_math_title', value: 'White Enamel Pendant Stunning | Vaxaura' }, { key: 'rank_math_description', value: 'white enamel pendant' }] });
+  const p498 = { id: 498, name: 'Gold Pearl Necklace', slug: 'gold-pearl-necklace-vaxaura', status: 'publish', meta_data: [{ key: 'rank_math_focus_keyword', value: 'gold pearl necklace' }] };
+  const p = planFix(p510, [p510, p498], { keyword: 'white enamel pendant' });
+  assert.equal(p.after.focus_keyword, 'white enamel pendant, heart charm');
+  assert.equal(p.after.slug, 'white-enamel-pendant-vaxaura');
+  assert.equal(p.after.title, 'White Enamel Pendant Stunning | Vaxaura');
+  assert.deepEqual(p.textChanges, { description: 0, short_description: 0 });
+  assert.ok(!p.conflicts.some((c) => c.severity === 'high'));
+});

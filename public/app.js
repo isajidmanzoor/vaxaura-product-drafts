@@ -311,20 +311,48 @@ async function decode(file) {
 const PHOTO_LIMIT = 100 * 1000; // bytes: under 100 KB however the KB is counted
 const FIT_STEPS = [[1600, 0.85], [1600, 0.78], [1400, 0.8], [1400, 0.74], [1200, 0.8], [1200, 0.74], [1200, 0.68], [1000, 0.78],
   [1000, 0.7], [1000, 0.62], [900, 0.66], [800, 0.66], [800, 0.56], [700, 0.56], [600, 0.5]];
-async function shrink(it) {
-  const { canvas } = await renderPhoto(it.file, 1600, it.brandY ?? it.autoY ?? null);
-  const out = await fitWebp(canvas);
-  return { data: await toBase64(out.blob), mime: out.mime, stats: { before: it.file.size, after: out.blob.size, width: out.width, height: out.height } };
-}
-// The largest size and best quality under 100 KB (also used for photos already in the shop).
-async function fitWebp(canvas) {
+// The largest size and best quality under the limit (also used for photos already in the shop).
+async function fitWebp(canvas, limit = PHOTO_LIMIT) {
   let out, side = 0, scaled = canvas;
   for (const [max, q] of FIT_STEPS) {
     if (max !== side) { side = max; scaled = scaleTo(canvas, max); }
     out = await encode(scaled, true, q);
-    if (out.blob.size <= PHOTO_LIMIT) break;
+    if (out.blob.size <= limit) break;
   }
   return { ...out, width: scaled.width, height: scaled.height };
+}
+
+// vaxaura.com saves every uploaded photo again at its own quality, which can turn a 95 KB photo
+// into 190 KB. So the size the shop really stored is checked after each upload: when it is over
+// 100 KB, the photo is made with fewer pixels and uploaded again (at most 3 tries). How much the
+// shop enlarges photos is remembered, so later photos start small enough to need one upload.
+// The too-large copies stay in the Media Library, unused; their IDs are reported.
+const INFLATE_KEY = 'vx-inflate';
+function inflation() { try { const v = Number(localStorage.getItem(INFLATE_KEY)); return v >= 1 && v <= 4 ? v : 1; } catch { return 1; } }
+function learnInflation(ratio) {
+  if (!(ratio > 0) || !Number.isFinite(ratio)) return;
+  // Up at once to the largest growth seen, down only slowly: better one upload a bit smaller than three.
+  try { localStorage.setItem(INFLATE_KEY, String(Math.min(4, Math.max(1, ratio, 0.8 * inflation() + 0.2 * ratio)))); } catch { /* storage blocked */ }
+}
+const startTarget = () => Math.floor(PHOTO_LIMIT / (inflation() * 1.05));
+async function uploadUnderLimit(file, { name, cy = null, brand = brandOn, onRetry } = {}) {
+  let maxSide = 1600, target = startTarget(), last = 0;
+  const extra = [];
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const { canvas } = await renderPhoto(file, maxSide, cy, brand);
+    const out = await fitWebp(canvas, target);
+    const media = await call('upload', { name, mime: out.mime, data: await toBase64(out.blob) });
+    const stored = media.bytes || out.blob.size;
+    learnInflation(stored / out.blob.size);
+    if (stored <= PHOTO_LIMIT) return { media, out, stored, extra };
+    extra.push(media.id);
+    last = stored;
+    onRetry?.(attempt, stored);
+    // The stored size goes down roughly with the number of pixels.
+    maxSide = Math.max(500, Math.floor((media.width || out.width) * Math.sqrt((0.85 * PHOTO_LIMIT) / stored)));
+    target = startTarget();
+  }
+  throw Object.assign(new Error(`The shop keeps saving this photo over 100 KB (last try ${kb(last)} KB), so it was not used. Try another photo.`), { extra });
 }
 function scaleTo(canvas, max) {
   const k = Math.min(1, max / Math.max(canvas.width, canvas.height));
@@ -363,7 +391,7 @@ function step(text) {
   const li = document.createElement('li');
   li.textContent = text; li.className = 'run';
   $('#steps').appendChild(li);
-  return { done: (t) => { li.className = 'done'; if (t) li.textContent = t; }, fail: (t) => { li.className = 'fail'; if (t) li.textContent = t; } };
+  return { done: (t) => { li.className = 'done'; if (t) li.textContent = t; }, fail: (t) => { li.className = 'fail'; if (t) li.textContent = t; }, note: (t) => { li.textContent = t; } };
 }
 
 let ticker;
@@ -395,8 +423,12 @@ async function run() {
     let t0 = Date.now();
     for (const [k, it] of todo.entries()) {
       s = step(`Uploading photo ${k + 1} of ${todo.length}`);
-      const { stats: ps, ...photo } = await shrink(it);
-      it.media = await call('upload', { name: it.file.name, ...photo });
+      const up = await uploadUnderLimit(it.file, {
+        name: it.file.name, cy: it.brandY ?? it.autoY ?? null,
+        onRetry: (n, bytes) => s.note(`Photo ${k + 1} of ${todo.length}: the shop saved it at ${kb(bytes)} KB, making it smaller (try ${n + 1})…`),
+      });
+      it.media = up.media;
+      const ps = { before: it.file.size, after: up.stored, width: up.out.width, height: up.out.height, extra: up.extra };
       stats.photos.push(ps);
       // From now on the thumbnail is the uploaded (branded) photo itself.
       const original = it.url;
@@ -404,7 +436,7 @@ async function run() {
       setPreview(it, null);
       if (original !== it.url && original.startsWith('blob:')) URL.revokeObjectURL(original);
       forget(it); // uploaded: the Media Library copy is kept instead of the file
-      s.done(`Photo ${k + 1} of ${todo.length} uploaded · ${kb(ps.after)} KB WebP`);
+      s.done(`Photo ${k + 1} of ${todo.length} uploaded · ${kb(ps.after)} KB in the shop${ps.extra.length ? ` (after ${ps.extra.length + 1} tries)` : ''}`);
     }
     lap('upload', t0);
     if (todo.length) renderThumbs(); // Photos now shows the uploaded photos, without the move buttons
@@ -986,6 +1018,7 @@ function renderRunStats(st) {
     ['SEO score', `${st.firstScore ?? '–'} → ${st.score ?? '–'}/100`],
     ['Photo weight', st.photos.length ? `${kb(before)} KB → ${kb(after)} KB (${before ? Math.round((1 - after / before) * 100) : 0}% smaller; largest ${kb(Math.max(...st.photos.map((p) => p.after)))} KB)` : 'no new photos'],
     ['AI model', st.model || '–'],
+    ...(st.photos.some((p) => p.extra?.length) ? [['Unused uploads', `${st.photos.flatMap((p) => p.extra || []).map((id) => `#${id}`).join(', ')} — the shop saved these over 100 KB, so smaller copies were used; they can be deleted in Media Library`]] : []),
   ];
   for (const [k, v] of rows) { const dt = document.createElement('dt'); dt.textContent = k; const dd = document.createElement('dd'); dd.textContent = v; dl.append(dt, dd); }
 }
@@ -1745,7 +1778,7 @@ function renderPhotoPlan() {
   }
   box.appendChild(ul);
   const ready = [...mt.prepared.keys()].length;
-  mtMsg(ready ? 'New photos are ready. Check them, then apply.' : p.photos.some((x) => x.needs) ? 'Click “Make new photos” to prepare the ticked photos (nothing is uploaded yet).' : 'All photos are already WebP under 100 KB.');
+  mtMsg(ready ? 'New photos are ready (the size the shop really stores is checked after upload). Check them, then apply.' : p.photos.some((x) => x.needs) ? 'Click “Make new photos” to prepare the ticked photos (nothing is uploaded yet).' : 'All photos are already WebP under 100 KB.');
   mtButtons([
     { label: 'Make new photos', on: preparePhotos, disabled: mt.busy },
     { label: 'Apply to the shop', cls: 'primary', id: 'maint-apply', disabled: !ready || mt.busy, on: (e) => armButton(e.currentTarget, `Yes, replace ${ready} photo${ready > 1 ? 's' : ''} of #${p.id}`, `This replaces ${ready} photo${ready > 1 ? 's' : ''} of the ${p.live ? 'LIVE ' : ''}product #${p.id} in the gallery and the description.`, applyPhotosNow) },
@@ -1765,8 +1798,8 @@ async function preparePhotos() {
       const ph = mt.plan.photos.find((x) => x.id === id);
       const file = await fetchLinkPhoto(ph.url);
       const { canvas } = await renderPhoto(file, 1600, null, brand);
-      const out = await fitWebp(canvas);
-      mt.prepared.set(id, { ...out, url: URL.createObjectURL(out.blob) });
+      const out = await fitWebp(canvas, startTarget());
+      mt.prepared.set(id, { ...out, file, url: URL.createObjectURL(out.blob) });
     }
   } catch (err) { mtMsg(err.message); mt.busy = false; return; }
   mt.busy = false;
@@ -1777,13 +1810,18 @@ async function applyPhotosNow() {
   mt.busy = true;
   mtButtons([]);
   try {
-    const replace = [];
+    const replace = [], extra = [];
     let k = 0;
     for (const [oldId, prep] of mt.prepared) {
       mtMsg(`Uploading new photo ${++k} of ${mt.prepared.size}…`);
-      const media = await call('upload', { name: `${slugText(p.name)}-${oldId}`, mime: prep.mime, data: await toBase64(prep.blob) });
-      replace.push({ oldId, newId: media.id });
+      const up = await uploadUnderLimit(prep.file, {
+        name: `${slugText(p.name)}-${oldId}`, brand: mt.brand,
+        onRetry: (n, bytes) => mtMsg(`Photo ${k}: the shop saved it at ${kb(bytes)} KB, making it smaller (try ${n + 1})…`),
+      }).catch((err) => { extra.push(...(err.extra || [])); throw err; });
+      extra.push(...up.extra);
+      replace.push({ oldId, newId: up.media.id });
     }
+    mt.extra = extra;
     mtMsg('Replacing the photos in the product…');
     const r = await call('fix', { action: 'photos-apply', id: p.id, replace, modified: p.modified });
     showMaintResult(r, 'Photos replaced.', () => openPhotoFix(p.id));
@@ -1804,6 +1842,8 @@ function showMaintResult(r, done, reopen) {
   box.innerHTML = '';
   box.appendChild(checkList(r.checks));
   if (r.url) { const p = el('p', null, 'small'); p.append('Product: ', link(r.url, r.url.replace(/^https?:\/\//, ''))); box.appendChild(p); }
+  if (mt.extra?.length) box.appendChild(el('p', `Unused uploads: ${mt.extra.map((id) => `#${id}`).join(', ')} — the shop saved these over 100 KB, so smaller copies were used; they can be deleted in Media Library.`, 'small muted'));
+  mt.extra = [];
   const bad = r.checks.filter((c) => c.status !== 'pass').length;
   mtMsg(`${done} ${bad ? `${bad} check(s) need a look.` : 'All checks passed.'}`);
   mtButtons([{ label: 'Open again', on: reopen }]);

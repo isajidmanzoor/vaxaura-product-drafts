@@ -13,6 +13,11 @@ desktops (review form with a sticky score card), in light and dark mode.
    Daraz, any public image; the server downloads them and refuses internal addresses). The browser
    adds the Vaxaura branding and saves every photo as WebP under 100 KB (largest size and quality
    that fit, at most 1600 px). They go to the WordPress Media Library; the first is the featured image.
+   vaxaura.com saves every upload again at its own quality (a 95 KB photo became 106–193 KB), so the
+   size the shop really stored is checked after each upload; when it is over 100 KB the photo is made
+   with fewer pixels and uploaded again (at most 3 tries). How much the shop enlarges photos is
+   remembered on the device, so later photos usually need one upload. The too-large copies stay in
+   the Media Library unused and their IDs are listed after the run.
 2. **Research**: Gemini (`gemini-3.6-flash`) identifies the product from the photos and proposes
    search phrases; the server then reads what people in Pakistan type into Google (Google
    autocomplete, `gl=pk`) and the matching Daraz.pk listings (price, sold count, rating, link).

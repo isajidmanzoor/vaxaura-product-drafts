@@ -93,3 +93,16 @@ test('a secondary keyword shared with another product’s secondary stays', () =
   const p514 = { id: 514, name: 'Mint Pearl Necklace', slug: 'mint', status: 'publish', meta_data: [{ key: 'rank_math_focus_keyword', value: 'mint green necklace, pearl pendant necklace' }] };
   assert.equal(planFix(p510, [p510, p498, p514], { keyword: 'white enamel pendant' }).after.focus_keyword, 'white enamel pendant, pearl pendant necklace');
 });
+
+test('the owner may edit the product name and both descriptions', () => {
+  const p = planFix(product(), [product(), other], { keyword: 'black couple watch set', edits: { name: 'Leopard Black Couple Watch Set', description: '<p>My own text about the black couple watch set.</p>', short_description: '' } });
+  assert.equal(p.after.name, 'Leopard Black Couple Watch Set');
+  assert.equal(p.full.description, '<p>My own text about the black couple watch set.</p>');
+  assert.match(p.full.short_description, /black couple watch set/); // empty edit: the automatic text is kept
+  assert.equal(p.descriptionsEdited, true);
+  assert.match(p.editUrl, /post\.php\?post=536&action=edit$/);
+  // a name edit alone (same keyword) is allowed
+  assert.equal(planFix(product(), [product()], { keyword: 'couple watches black metal', edits: { name: 'New Name' } }).after.name, 'New Name');
+  assert.throws(() => planFix(product(), [product()], { keyword: 'black couple watch set', edits: { description: '<p>x</p><script>alert(1)</script>' } }), /script/);
+  assert.throws(() => planFix(product(), [product()], { keyword: 'black couple watch set', edits: { name: 'x'.repeat(121) } }), /too long/);
+});

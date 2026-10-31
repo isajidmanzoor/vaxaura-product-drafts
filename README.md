@@ -57,7 +57,8 @@ desktops (review form with a sticky score card), in light and dark mode.
      section, or a keyword chip in the keyword & URL QA) shows the new focus keyword, SEO title, meta
      description, URL and main photo alt next to the current ones, the Rank Math score before and
      after, and how often the old keyword is replaced in the descriptions (text only: photos, links
-     and formatting stay). Every value can be edited. "Apply to the shop" saves it only after a
+     and formatting stay). Every value can be edited, including the product name and both
+     descriptions (HTML), and there is a link to open the product in WordPress. "Apply to the shop" saves it only after a
      confirmation, keeps the previous values on the product for **Undo**, refuses if the product was
      changed in WordPress after the preview, and checks that a live product's old URL redirects
      (301) to the new one (WordPress does this itself for a changed slug).

@@ -1203,13 +1203,16 @@ function fixChanges(p) {
     if (sg.length) out.push(`remove keyword${sg.length > 1 ? 's' : ''} ${sg.map((k) => `“${k}”`).join(', ')}`);
     if (sa.length) out.push(`add keyword${sa.length > 1 ? 's' : ''} ${sa.map((k) => `“${k}”`).join(', ')}`);
   }
+  if (b.name !== a.name) out.push(`product name → “${a.name}”`);
   if (b.title !== a.title) out.push('SEO title');
   if (b.meta !== a.meta) out.push('meta description');
   if (b.slug !== a.slug) out.push(`URL → /product/${a.slug}/`);
   if (b.alt !== a.alt) out.push('main photo alt text');
   const n = p.textChanges.description + p.textChanges.short_description;
-  if (n) out.push(`“${p.from}” → “${p.keyword}” ${n} time${n > 1 ? 's' : ''} in the descriptions`);
-  if (!out.length || (out.length && !(b.title !== a.title || b.meta !== a.meta || b.slug !== a.slug || b.alt !== a.alt || n))) out.push('nothing else changes');
+  const ownDesc = Object.keys(fixState.edits || {}).some((k) => k === 'description' || k === 'short_description');
+  if (ownDesc) out.push('descriptions as you edited them');
+  else if (n) out.push(`“${p.from}” → “${p.keyword}” ${n} time${n > 1 ? 's' : ''} in the descriptions`);
+  if (!out.length || !(b.name !== a.name || b.title !== a.title || b.meta !== a.meta || b.slug !== a.slug || b.alt !== a.alt || n || ownDesc)) out.push('nothing else changes');
   return out;
 }
 
@@ -1219,7 +1222,8 @@ function disarm() {
   $('#fix-undo').textContent = 'Undo';
   $('#fix-apply').classList.remove('danger'); $('#fix-undo').classList.remove('danger');
 }
-const FIX_FIELDS = [['title', 'SEO title', 60], ['meta', 'Meta description', 160], ['slug', 'URL slug', 75], ['alt', 'Main photo alt text', 125], ['secondary', 'Secondary keywords (comma separated)', 0]];
+// Every field of the fix can be edited by the owner before applying.
+const FIX_FIELDS = [['name', 'Product name', 120], ['title', 'SEO title', 60], ['meta', 'Meta description', 160], ['slug', 'URL slug', 75], ['alt', 'Main photo alt text', 125], ['secondary', 'Secondary keywords (comma separated)', 0]];
 
 function fixButton(id, keyword, label = 'Preview fix') {
   const b = el('button', label, 'secondary small-fix');
@@ -1241,9 +1245,12 @@ async function openFix(id, keyword) {
   await previewFixNow();
 }
 
+const DESC_FIELDS = [['short_description', 'Short description (HTML)', 6], ['description', 'Long description (HTML)', 14]];
+// Text boxes turn "\r\n" into "\n": compared without that difference, or Apply would see an edit every time.
+const norm = (v) => String(v ?? '').replace(/\r\n?/g, '\n').trim();
 function fixEdits() {
   const edits = {};
-  for (const [k] of FIX_FIELDS) { const v = $(`#fix-${k}`)?.value; if (v != null && v.trim() !== String(fixState.plan?.after[k] ?? '').trim()) edits[k] = v; }
+  for (const [k] of [...FIX_FIELDS, ...DESC_FIELDS]) { const v = $(`#fix-${k}`)?.value; if (v != null && norm(v) !== norm(fixState.plan?.after[k])) edits[k] = v; }
   const kw = $('#fix-keyword')?.value.trim();
   if (kw) fixState.keyword = kw;
   return edits;
@@ -1274,6 +1281,10 @@ function renderFixPlan(p) {
   const kwIn = el('input'); kwIn.id = 'fix-keyword'; kwIn.value = p.keyword;
   kwRow.append(kwLabel, kwIn);
   box.appendChild(kwRow);
+  const intro = el('p', null, 'small muted');
+  intro.append('Every field below can be edited before you apply; “Recheck” shows the new score. ');
+  if (p.editUrl) intro.append(link(p.editUrl, 'Open this product in WordPress'), ' to change anything else.');
+  box.appendChild(intro);
   for (const [k, label, max] of FIX_FIELDS) {
     const row = el('div', null, 'fix-row');
     const l = el('label', label); l.htmlFor = `fix-${k}`;
@@ -1292,6 +1303,19 @@ function renderFixPlan(p) {
     row.append(l, input, was);
     box.appendChild(row);
   }
+  const own = Object.keys(fixState.edits || {}).some((k) => k === 'description' || k === 'short_description');
+  const desc = el('details', null, 'fix-desc');
+  desc.open = own;
+  const n = p.textChanges.description + p.textChanges.short_description;
+  desc.appendChild(el('summary', `Edit descriptions (HTML)${own ? ' — edited by you' : n ? ` — keyword replaced ${n} time${n > 1 ? 's' : ''}` : ''}`));
+  for (const [k, label, rows] of DESC_FIELDS) {
+    const row = el('div', null, 'fix-row');
+    const l = el('label', label); l.htmlFor = `fix-${k}`;
+    const ta = el('textarea'); ta.id = `fix-${k}`; ta.rows = rows; ta.spellcheck = false; ta.value = p.after[k] ?? '';
+    row.append(l, ta);
+    desc.appendChild(row);
+  }
+  box.appendChild(desc);
   const facts = el('ul', null, 'fix-facts');
   const li = (t, cls) => facts.appendChild(el('li', t, cls));
   li(`Rank Math score: ${p.score.before} → ${p.score.after}/100`, p.score.after >= p.score.before ? 'pass' : 'warn');

@@ -97,7 +97,7 @@ const BRAND_STEP = 0.06;
 
 // Draws a photo at most maxSide px, with the branding when it is on. Returns the canvas and the
 // height (0–1) the logo block was placed at.
-async function renderPhoto(file, maxSide, cy) {
+async function renderPhoto(file, maxSide, cy, brand = brandOn) {
   const bmp = await decode(file);
   const w = bmp.width || bmp.naturalWidth, h = bmp.height || bmp.naturalHeight;
   const scale = Math.min(1, maxSide / Math.max(w, h));
@@ -105,7 +105,7 @@ async function renderPhoto(file, maxSide, cy) {
   canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
   canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
   bmp.close?.();
-  if (!brandOn) return { canvas, cy: null };
+  if (!brand) return { canvas, cy: null };
   const { logo } = await brandAssets();
   const at = cy ?? placeFor(canvas);
   drawBrand(canvas, logo, { cy: at });
@@ -313,16 +313,18 @@ const FIT_STEPS = [[1600, 0.85], [1600, 0.78], [1400, 0.8], [1400, 0.74], [1200,
   [1000, 0.7], [1000, 0.62], [900, 0.66], [800, 0.66], [800, 0.56], [700, 0.56], [600, 0.5]];
 async function shrink(it) {
   const { canvas } = await renderPhoto(it.file, 1600, it.brandY ?? it.autoY ?? null);
+  const out = await fitWebp(canvas);
+  return { data: await toBase64(out.blob), mime: out.mime, stats: { before: it.file.size, after: out.blob.size, width: out.width, height: out.height } };
+}
+// The largest size and best quality under 100 KB (also used for photos already in the shop).
+async function fitWebp(canvas) {
   let out, side = 0, scaled = canvas;
   for (const [max, q] of FIT_STEPS) {
     if (max !== side) { side = max; scaled = scaleTo(canvas, max); }
     out = await encode(scaled, true, q);
     if (out.blob.size <= PHOTO_LIMIT) break;
   }
-  const buf = new Uint8Array(await out.blob.arrayBuffer());
-  let bin = '';
-  for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-  return { data: btoa(bin), mime: out.mime, stats: { before: it.file.size, after: out.blob.size, width: scaled.width, height: scaled.height } };
+  return { ...out, width: scaled.width, height: scaled.height };
 }
 function scaleTo(canvas, max) {
   const k = Math.min(1, max / Math.max(canvas.width, canvas.height));
@@ -940,6 +942,12 @@ function renderQa(box, qa) {
   facts.textContent = [`SEO ${m.score}/100`, m.keyword ? `keyword “${m.keyword}”` : 'no focus keyword', `${m.words} words`,
     `${(m.photos || []).length} photos, ${m.totalKB ?? '?'} KB in total (${(m.photos || []).map((p) => `${p.kb ?? '?'} KB`).join(', ')})`].join(' · ');
   box.appendChild(facts);
+  // Heavy or non-WebP photos: offer the photo fix right here.
+  if (qa.id && qa.checks.some((c) => c.group === 'Photos' && /KB or less|WebP/.test(c.label) && c.status !== 'pass')) {
+    const p = el('p', 'Some photos are over 100 KB or not WebP. ', 'hint');
+    p.appendChild(photoFixButton(qa.id));
+    box.appendChild(p);
+  }
   if (qa.keyword) box.appendChild(keywordPanel(qa.keyword, qa.id));
   const groups = [...new Set(qa.checks.map((c) => c.group))];
   for (const g of groups) {
@@ -1451,6 +1459,8 @@ function renderStore(r) {
   if (r.skuIssues.length) {
     box.appendChild(el('h3', 'SKUs to tidy'));
     box.appendChild(el('p', r.skuIssues.map((s) => `#${s.id} ${s.sku}`).join(' · '), 'small'));
+    const b = el('button', 'Fix SKUs', 'secondary small-fix'); b.type = 'button'; b.addEventListener('click', openSkuFix);
+    box.appendChild(b);
   }
   box.appendChild(el('h3', 'Products (most issues first)'));
   const wrap = el('div', null, 'table-wrap');
@@ -1464,7 +1474,10 @@ function renderStore(r) {
     const name = el('td');
     name.append(p.url ? link(p.url, p.name) : p.name, el('small', ` #${p.id} · ${p.sku || 'no SKU'}`));
     tr.append(name, el('td', STATUS[p.status] || p.status), el('td', String(p.score), p.score === 100 ? 'ok' : p.score < 80 ? 'bad' : ''),
-      el('td', p.keyword || '–'), el('td', `${p.photos} · ${p.totalKB ?? '?'} KB${p.heavyPhotos ? ` · ${p.heavyPhotos} over 100 KB` : ''}`, p.heavyPhotos ? 'bad' : ''));
+      el('td', p.keyword || '–'));
+    const ph = el('td', `${p.photos} · ${p.totalKB ?? '?'} KB${p.heavyPhotos ? ` · ${p.heavyPhotos} over 100 KB` : ''}`, p.heavyPhotos ? 'bad' : '');
+    if (p.heavyPhotos) ph.append(' ', photoFixButton(p.id));
+    tr.appendChild(ph);
     const issues = el('td');
     if (!p.issues.length) issues.textContent = '✓ none';
     else {
@@ -1634,3 +1647,235 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 start().catch((e) => { show('login'); $('#login-error').textContent = e.message; });
+
+// ---------- shop maintenance: photos and SKUs of products already in the shop ----------
+// One dialog for both. Saving always takes two clicks on the same button (no confirm() box).
+const mt = { kind: null, busy: false, armed: false, plan: null, prepared: new Map(), skuResults: null, brand: false };
+const mtMsg = (t) => { $('#maint-msg').textContent = t; };
+function mtButtons(list) {
+  const box = $('#maint-actions');
+  box.innerHTML = '';
+  for (const b of list) {
+    const btn = el('button', b.label, b.cls || 'secondary');
+    btn.type = 'button';
+    if (b.id) btn.id = b.id;
+    btn.disabled = !!b.disabled;
+    btn.addEventListener('click', b.on);
+    box.appendChild(btn);
+  }
+  const close = el('button', 'Close', 'link-btn');
+  close.type = 'button';
+  close.addEventListener('click', () => { if (!mt.busy) $('#maint-dialog').close(); });
+  box.appendChild(close);
+}
+// First click arms ("Yes, …"), second click runs.
+function armButton(btn, label, warning, run) {
+  if (!mt.armed) {
+    mt.armed = true;
+    btn.textContent = label; btn.classList.add('danger');
+    mtMsg(warning + ' Click the button again to confirm, or Close to cancel.');
+    $('#maint-msg').scrollIntoView({ block: 'nearest' });
+    return;
+  }
+  mt.armed = false;
+  run();
+}
+function openMaint(title) {
+  Object.assign(mt, { busy: false, armed: false, plan: null, prepared: new Map(), skuResults: null, brand: false });
+  $('#maint-h').textContent = title;
+  $('#maint-body').innerHTML = '';
+  mtMsg('Loading… (nothing is changed yet)');
+  mtButtons([]);
+  const d = $('#maint-dialog');
+  if (!d.open) d.showModal();
+}
+$('#maint-dialog').addEventListener('close', () => {
+  for (const p of mt.prepared.values()) URL.revokeObjectURL(p.url);
+  mt.prepared.clear();
+});
+
+const toBase64 = async (blob) => {
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  let bin = '';
+  for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+  return btoa(bin);
+};
+
+// ---- photos ----
+function photoFixButton(id) {
+  const b = el('button', 'Fix photos', 'secondary small-fix');
+  b.type = 'button';
+  b.addEventListener('click', () => openPhotoFix(id));
+  return b;
+}
+async function openPhotoFix(id) {
+  openMaint('Fix photos');
+  try {
+    mt.kind = 'photos';
+    mt.plan = await call('maintain', { action: 'photos-plan', id });
+    renderPhotoPlan();
+  } catch (err) { mtMsg(err.message); }
+}
+function renderPhotoPlan() {
+  const p = mt.plan;
+  const box = $('#maint-body');
+  box.innerHTML = '';
+  box.appendChild(el('p', `#${p.id} ${p.name} (${STATUS[p.status] || p.status}) · ${p.photos.length} photo${p.photos.length === 1 ? '' : 's'}, ${p.inDescription} inside the description`, 'small muted'));
+  box.appendChild(el('p', 'Ticked photos are made into WebP under 100 KB here in the browser. When you apply, they are uploaded and replace the old ones in the gallery and in the description (alt texts stay). The old files stay in the Media Library, and Undo puts them back.', 'small'));
+  const brand = el('label', null, 'brand-toggle');
+  const bx = el('input'); bx.type = 'checkbox'; bx.id = 'maint-brand'; bx.checked = mt.brand;
+  brand.append(bx, ' Add the Vaxaura branding (leave off if the photos already have it)');
+  // Photos made with the other setting no longer match: they are made again.
+  bx.addEventListener('change', () => { mt.brand = bx.checked; mt.armed = false; for (const v of mt.prepared.values()) URL.revokeObjectURL(v.url); mt.prepared.clear(); renderPhotoPlan(); });
+  box.appendChild(brand);
+  const ul = el('ul', null, 'maint-photos');
+  for (const ph of p.photos) {
+    const li = el('li');
+    const cb = el('input'); cb.type = 'checkbox'; cb.checked = ph.needs; cb.dataset.photo = ph.id; cb.id = `mp-${ph.id}`;
+    const img = el('img'); img.src = ph.thumb; img.alt = ''; img.loading = 'lazy';
+    const lab = el('label'); lab.htmlFor = cb.id;
+    lab.append(el('strong', `#${ph.id}`), ` ${ph.kb ?? '?'} KB · ${(ph.mime || '?').replace('image/', '').toUpperCase()}`, ph.needs ? el('span', ` — ${ph.reason}`, 'bad-text') : el('span', ' — fine', 'ok-text'));
+    const prep = mt.prepared.get(ph.id);
+    const after = el('span', prep ? `→ ${kb(prep.blob.size)} KB ${prep.mime === 'image/webp' ? 'WebP' : 'JPG'}, ${prep.width}×${prep.height}` : '', 'maint-after');
+    const pics = el('span', null, 'maint-pics');
+    pics.appendChild(img);
+    if (prep) { const ni = el('img'); ni.src = prep.url; ni.alt = 'new'; pics.appendChild(ni); }
+    li.append(cb, pics, lab, after);
+    ul.appendChild(li);
+  }
+  box.appendChild(ul);
+  const ready = [...mt.prepared.keys()].length;
+  mtMsg(ready ? 'New photos are ready. Check them, then apply.' : p.photos.some((x) => x.needs) ? 'Click “Make new photos” to prepare the ticked photos (nothing is uploaded yet).' : 'All photos are already WebP under 100 KB.');
+  mtButtons([
+    { label: 'Make new photos', on: preparePhotos, disabled: mt.busy },
+    { label: 'Apply to the shop', cls: 'primary', id: 'maint-apply', disabled: !ready || mt.busy, on: (e) => armButton(e.currentTarget, `Yes, replace ${ready} photo${ready > 1 ? 's' : ''} of #${p.id}`, `This replaces ${ready} photo${ready > 1 ? 's' : ''} of the ${p.live ? 'LIVE ' : ''}product #${p.id} in the gallery and the description.`, applyPhotosNow) },
+    ...(p.canUndo ? [{ label: 'Undo last photo fix', on: (e) => armButton(e.currentTarget, 'Yes, put the old photos back', `This puts back #${p.id}’s photos and description as they were before the last photo fix.`, undoPhotosNow) }] : []),
+  ]);
+}
+async function preparePhotos() {
+  const ids = [...document.querySelectorAll('#maint-body input[data-photo]:checked')].map((c) => Number(c.dataset.photo));
+  if (!ids.length) { mtMsg('Tick at least one photo.'); return; }
+  mt.busy = true; mt.armed = false;
+  const brand = mt.brand;
+  for (const v of mt.prepared.values()) URL.revokeObjectURL(v.url);
+  mt.prepared.clear();
+  try {
+    for (const [k, id] of ids.entries()) {
+      mtMsg(`Making photo ${k + 1} of ${ids.length}…`);
+      const ph = mt.plan.photos.find((x) => x.id === id);
+      const file = await fetchLinkPhoto(ph.url);
+      const { canvas } = await renderPhoto(file, 1600, null, brand);
+      const out = await fitWebp(canvas);
+      mt.prepared.set(id, { ...out, url: URL.createObjectURL(out.blob) });
+    }
+  } catch (err) { mtMsg(err.message); mt.busy = false; return; }
+  mt.busy = false;
+  renderPhotoPlan();
+}
+async function applyPhotosNow() {
+  const p = mt.plan;
+  mt.busy = true;
+  mtButtons([]);
+  try {
+    const replace = [];
+    let k = 0;
+    for (const [oldId, prep] of mt.prepared) {
+      mtMsg(`Uploading new photo ${++k} of ${mt.prepared.size}…`);
+      const media = await call('upload', { name: `${slugText(p.name)}-${oldId}`, mime: prep.mime, data: await toBase64(prep.blob) });
+      replace.push({ oldId, newId: media.id });
+    }
+    mtMsg('Replacing the photos in the product…');
+    const r = await call('maintain', { action: 'photos-apply', id: p.id, replace, modified: p.modified });
+    showMaintResult(r, 'Photos replaced.', () => openPhotoFix(p.id));
+  } catch (err) { mtMsg(err.message); mt.busy = false; renderPhotoPlanSafe(); }
+}
+async function undoPhotosNow() {
+  mt.busy = true;
+  mtButtons([]);
+  mtMsg('Restoring the earlier photos…');
+  try { showMaintResult(await call('maintain', { action: 'photos-undo', id: mt.plan.id }), 'Earlier photos restored.', () => openPhotoFix(mt.plan.id)); }
+  catch (err) { mtMsg(err.message); mt.busy = false; renderPhotoPlanSafe(); }
+}
+function renderPhotoPlanSafe() { if (mt.plan) renderPhotoPlan(); }
+const slugText = (s) => String(s || 'photo').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'photo';
+function showMaintResult(r, done, reopen) {
+  mt.busy = false;
+  const box = $('#maint-body');
+  box.innerHTML = '';
+  box.appendChild(checkList(r.checks));
+  if (r.url) { const p = el('p', null, 'small'); p.append('Product: ', link(r.url, r.url.replace(/^https?:\/\//, ''))); box.appendChild(p); }
+  const bad = r.checks.filter((c) => c.status !== 'pass').length;
+  mtMsg(`${done} ${bad ? `${bad} check(s) need a look.` : 'All checks passed.'}`);
+  mtButtons([{ label: 'Open again', on: reopen }]);
+}
+
+// ---- SKUs ----
+async function openSkuFix() {
+  openMaint('Fix SKUs');
+  try {
+    mt.kind = 'sku';
+    mt.plan = await call('maintain', { action: 'sku-plan' });
+    renderSkuPlan();
+  } catch (err) { mtMsg(err.message); }
+}
+function renderSkuPlan() {
+  const items = mt.plan.items;
+  const box = $('#maint-body');
+  box.innerHTML = '';
+  if (!items.length && !mt.skuResults) { mtMsg('Every product already has a SKU in the VAX-XX00 format.'); mtButtons([]); return; }
+  box.appendChild(el('p', 'Suggested SKUs in the shop’s format (VAX-JP07): an untidy SKU keeps its number when it is free; a missing one gets the next free number for its category. Edit any of them, untick the ones to leave, then apply. The old SKU is kept for Undo.', 'small'));
+  const wrap = el('div', null, 'table-wrap');
+  const t = el('table', null, 'qa-table sku-table');
+  const hr = el('tr');
+  for (const h of ['', 'Product', 'Now', 'New SKU', '']) hr.appendChild(el('th', h));
+  t.appendChild(el('thead')).appendChild(hr);
+  const tb = el('tbody');
+  for (const it of items) {
+    const res = mt.skuResults?.find((x) => x.id === it.id);
+    const tr = el('tr');
+    // A refused SKU stays ticked, to correct it and apply again.
+    const c0 = el('td'); const cb = el('input'); cb.type = 'checkbox'; cb.checked = !res || res.status !== 'pass'; cb.dataset.sku = it.id; cb.setAttribute('aria-label', `Change the SKU of #${it.id}`); c0.appendChild(cb);
+    const c1 = el('td'); c1.append(`#${it.id} ${it.name}`, el('small', it.reason));
+    const inp = el('input'); inp.value = res?.sku || it.proposed; inp.dataset.skuInput = it.id; inp.setAttribute('aria-label', `New SKU for #${it.id}`); inp.className = 'sku-input';
+    const c4 = el('td');
+    if (res) {
+      c4.appendChild(el('span', `${QA_ICON[res.status]} ${res.info}`, res.status === 'pass' ? 'ok-text' : 'bad-text'));
+      if (res.canUndo) {
+        const u = el('button', 'Undo', 'secondary small-fix'); u.type = 'button';
+        u.addEventListener('click', async () => {
+          if (u.dataset.armed !== '1') { u.dataset.armed = '1'; u.textContent = `Yes, put back “${it.current || 'none'}”`; u.classList.add('danger'); return; }
+          u.disabled = true;
+          try { const r = await call('maintain', { action: 'sku-undo', id: it.id }); res.status = r.status; res.info = `restored “${r.sku || 'none'}”`; res.canUndo = r.canUndo; res.sku = r.sku; }
+          catch (err) { res.status = 'fail'; res.info = err.message; }
+          renderSkuPlan();
+        });
+        c4.append(' ', u);
+      }
+    }
+    const c3 = el('td'); c3.appendChild(inp);
+    tr.append(c0, c1, el('td', it.current || '(none)'), c3, c4);
+    tb.appendChild(tr);
+  }
+  t.appendChild(tb); wrap.appendChild(t); box.appendChild(wrap);
+  mtMsg(mt.skuResults ? 'Done. Results are next to each product.' : `${items.length} product${items.length > 1 ? 's' : ''} to tidy. Nothing has been changed yet.`);
+  mtButtons([{ label: 'Apply ticked SKUs', cls: 'primary', on: (e) => {
+    const sel = [...document.querySelectorAll('#maint-body input[data-sku]:checked')].map((c) => Number(c.dataset.sku));
+    if (!sel.length) { mtMsg('Tick at least one product.'); return; }
+    armButton(e.currentTarget, `Yes, change ${sel.length} SKU${sel.length > 1 ? 's' : ''}`, `This changes the SKU of ${sel.length} product${sel.length > 1 ? 's' : ''} in the shop.`, applySkusNow);
+  } }]);
+}
+async function applySkusNow() {
+  const sel = [...document.querySelectorAll('#maint-body input[data-sku]:checked')].map((c) => Number(c.dataset.sku));
+  const items = sel.map((id) => ({ id, sku: document.querySelector(`#maint-body input[data-sku-input="${id}"]`).value }));
+  mt.busy = true;
+  mtButtons([]);
+  mtMsg('Saving the SKUs…');
+  try {
+    const r = await call('maintain', { action: 'sku-apply', items });
+    mt.skuResults = [...(mt.skuResults || []).filter((x) => !sel.includes(x.id)), ...r.results];
+    const bad = r.results.filter((x) => x.status !== 'pass').length;
+    mt.busy = false;
+    renderSkuPlan();
+    mtMsg(`${r.results.length - bad} of ${r.results.length} SKUs saved.${bad ? ' See the reasons next to the others.' : ''}`);
+  } catch (err) { mt.busy = false; renderSkuPlan(); mtMsg(err.message); }
+}

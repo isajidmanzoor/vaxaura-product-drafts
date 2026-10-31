@@ -62,6 +62,14 @@ desktops (review form with a sticky score card), in light and dark mode.
      confirmation, keeps the previous values on the product for **Undo**, refuses if the product was
      changed in WordPress after the preview, and checks that a live product's old URL redirects
      (301) to the new one (WordPress does this itself for a changed slug).
+   - **Fix photos** (`lib/maintenance.mjs`; product check and shop report): photos over 100 KB or
+     not WebP are made into WebP under 100 KB in the browser (Vaxaura branding optional), uploaded,
+     and replace the old ones in the gallery and inside the description; alt texts stay, the old
+     files stay in the Media Library, and Undo puts them back.
+   - **Fix SKUs** (shop report): missing or untidy SKUs get the shop format; an untidy one keeps its
+     number when it is free (vax - JP04 -> VAX-JP04), a missing one gets the next free number for
+     its category. Each can be edited; duplicates (also with trashed products) are refused, and the
+     old SKU is kept for Undo.
 
 The SKU is always the next free number for the category (VAX-JP07, VAX-CW002, …), never invented; a
 new category gets the initials of its name (Hair Accessories → VAX-HA01). It follows the category on
@@ -118,11 +126,12 @@ The dev server reads the same variables from the environment or from
 ## Files
 
 - `public/` – the page (no build step)
-- `api/*.js` – Vercel functions: `login`, `logout`, `me`, `context`, `upload`, `fetch-photo`, `research`, `write`, `audit`, `draft`, `qa`, `fix`
+- `api/*.js` – Vercel functions: `login`, `logout`, `me`, `context`, `upload`, `fetch-photo`, `research`, `write`, `audit`, `draft`, `qa`, `fix`, `maintain`
 - `lib/woo.mjs` – WordPress/WooCommerce/Rank Math client, SEO audit, draft creation and checks
 - `lib/ai.mjs` – Gemini research, listing and SEO repair loop
 - `lib/keywords.mjs` – keyword candidates from Google searches, keyword cannibalization
 - `lib/qa.mjs` – QA of a product and the shop-wide report
 - `lib/keyword-qa.mjs` – keyword & URL QA, cannibalization groups and fixes, keyword checker
 - `lib/fix.mjs` – keyword fix for products already in the shop: preview, apply, undo
+- `lib/maintenance.mjs` – photo and SKU fixes for products already in the shop
 - `lib/http.mjs` – login cookie and route wrapper

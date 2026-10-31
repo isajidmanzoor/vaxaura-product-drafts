@@ -328,3 +328,16 @@ code { font-size: .85em; overflow-wrap: anywhere; }
 #open-qa { min-width: 44px; }
 #start-over, #cats-refresh, .small-fix { min-height: 36px; }
 body[data-view="qa"] #restored { display: none !important; }
+
+/* Shop maintenance dialog */
+.maint-photos { list-style: none; padding: 0; margin: 8px 0; }
+.maint-photos li { display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: .86rem; }
+.maint-pics { display: flex; gap: 4px; }
+.maint-photos img { width: 56px; height: 56px; object-fit: contain; border-radius: 6px; background: var(--field); }
+.maint-photos label { margin: 0; font-weight: 400; min-width: 0; overflow-wrap: anywhere; }
+.maint-after { grid-column: 1 / -1; color: var(--ok); font-weight: 600; }
+.maint-after:empty { display: none; }
+.bad-text { color: var(--bad); }
+.ok-text { color: var(--ok); }
+.sku-table td small { display: block; color: var(--muted); }
+.sku-input { width: 9.5em; min-width: 0; }

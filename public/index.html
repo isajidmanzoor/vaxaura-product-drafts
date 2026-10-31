@@ -275,6 +275,22 @@
     <h2>This tool’s runs</h2>
     <div id="qa-history"></div>
   </section>
+
+  <!-- Keyword fix for a product already in the shop -->
+  <dialog id="fix-dialog" class="fix-dialog" aria-labelledby="fix-h">
+    <form id="fix-form" method="dialog">
+      <h2 id="fix-h">Fix the keyword</h2>
+      <p id="fix-what" class="small muted"></p>
+      <div id="fix-body"></div>
+      <p id="fix-msg" class="small" role="status"></p>
+      <div class="fix-actions">
+        <button id="fix-recheck" type="button" class="secondary">Recheck</button>
+        <button id="fix-apply" type="button" class="primary">Apply to the shop</button>
+        <button id="fix-undo" type="button" class="secondary" hidden>Undo</button>
+        <button id="fix-close" type="button" class="link-btn">Close</button>
+      </div>
+    </form>
+  </dialog>
 </main>
 <script src="app.js" type="module"></script>
 </body>

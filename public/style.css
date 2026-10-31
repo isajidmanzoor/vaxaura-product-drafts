@@ -299,3 +299,19 @@ code { font-size: .85em; overflow-wrap: anywhere; }
   #open-qa .short { display: inline; }
   .qa-form button { flex: 1 1 auto; }
 }
+
+/* Keyword fix dialog */
+.fix-dialog { width: min(680px, calc(100vw - 24px)); max-height: calc(100vh - 32px); border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); color: var(--ink); padding: 18px; }
+.fix-dialog::backdrop { background: rgba(0, 0, 0, .55); }
+.fix-row { margin: 10px 0; }
+.fix-row label { display: block; font-weight: 600; font-size: .88rem; }
+.fix-row input, .fix-row textarea { width: 100%; }
+.fix-was { margin: 2px 0 0; font-size: .8rem; color: var(--muted); overflow-wrap: anywhere; }
+.fix-facts { padding-left: 18px; font-size: .86rem; }
+.fix-facts li.pass { color: var(--ok); }
+.fix-facts li.warn { color: var(--warn-ink); }
+.fix-facts li.fail { color: var(--bad); }
+.fix-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.small-fix { min-height: 30px; padding: 2px 10px; font-size: .82rem; margin-top: 4px; }
+.fix-dialog { overflow-x: hidden; box-sizing: border-box; }
+.fix-row input, .fix-row textarea { box-sizing: border-box; max-width: 100%; font: inherit; }

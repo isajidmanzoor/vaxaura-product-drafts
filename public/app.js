@@ -932,7 +932,7 @@ function renderQa(box, qa) {
   facts.textContent = [`SEO ${m.score}/100`, m.keyword ? `keyword “${m.keyword}”` : 'no focus keyword', `${m.words} words`,
     `${(m.photos || []).length} photos, ${m.totalKB ?? '?'} KB in total (${(m.photos || []).map((p) => `${p.kb ?? '?'} KB`).join(', ')})`].join(' · ');
   box.appendChild(facts);
-  if (qa.keyword) box.appendChild(keywordPanel(qa.keyword));
+  if (qa.keyword) box.appendChild(keywordPanel(qa.keyword, qa.id));
   const groups = [...new Set(qa.checks.map((c) => c.group))];
   for (const g of groups) {
     const list = qa.checks.filter((c) => c.group === g);
@@ -1036,7 +1036,7 @@ function checkList(list) {
 }
 
 // The keyword & URL panel of a product QA.
-function keywordPanel(k) {
+function keywordPanel(k, id) {
   const box = el('section', null, 'kwqa');
   box.appendChild(el('h3', 'Keyword & URL QA'));
   const u = el('p', null, 'kwqa-url');
@@ -1057,11 +1057,13 @@ function keywordPanel(k) {
     box.appendChild(d);
   }
   if (k.suggestions.length) {
-    box.appendChild(el('p', 'Real Google searches for this product that no other Vaxaura product uses (most searched first):', 'small muted'));
+    box.appendChild(el('p', `Real Google searches for this product that no other Vaxaura product uses (most searched first)${id ? '; click one to preview switching to it' : ''}:`, 'small muted'));
     const chips = el('div', null, 'kw-chips');
     for (const x of k.suggestions) {
-      const c = el('span', x.kw, 'kw-chip static' + (x.kw === k.focus ? ' on' : ''));
+      const current = x.kw === k.focus;
+      const c = el(id && !current ? 'button' : 'span', x.kw, 'kw-chip' + (id && !current ? '' : ' static') + (current ? ' on' : ''));
       c.title = `Suggested by Google ${x.hits} time${x.hits > 1 ? 's' : ''}`;
+      if (id && !current) { c.type = 'button'; c.addEventListener('click', () => openFix(id, x.kw)); }
       chips.appendChild(c);
     }
     box.appendChild(chips);
@@ -1071,6 +1073,7 @@ function keywordPanel(k) {
     const p = el('p', null, 'hint');
     p.append('Better: focus keyword ', el('strong', `“${better.kw}”`), ' and URL ', el('code', `/product/${k.suggestedSlug}/`), '.');
     if (k.live) p.append(' ', REDIRECT_NOTE);
+    if (id) p.append(' ', fixButton(id, better.kw));
     box.appendChild(p);
   }
   return box;
@@ -1121,6 +1124,7 @@ function renderCannibal(r) {
         p.append(`Fix #${f.id}: change the focus keyword from “${f.from || 'none'}” to `, el('strong', `“${f.to}”`), ' and the URL to ', el('code', `/product/${f.slug}/`), '.');
         if (f.alternatives.length > 1) p.append(` Other free searches: ${f.alternatives.slice(1).join(', ')}.`);
         if (f.live) p.append(' ', REDIRECT_NOTE);
+        p.append(' ', fixButton(f.id, f.to));
       } else p.append(`#${f.id}: Google offered no free search for this product; choose a more specific focus keyword (colour, shape, brand) by hand.`);
       card.appendChild(p);
     }
@@ -1177,6 +1181,137 @@ async function checkKw(value) {
   } catch (err) { if (seq === kwcSeq) $('#kwc-status').textContent = err.message; }
 }
 $('#kwc-form').addEventListener('submit', (e) => { e.preventDefault(); checkKw($('#kwc-input').value); });
+
+// ---------- keyword fix for a product already in the shop ----------
+// Preview (nothing changes) -> the owner may edit the new values -> Apply (after a confirm) -> Undo.
+const fixState = { id: null, keyword: '', plan: null, edits: {}, busy: false };
+const FIX_FIELDS = [['title', 'SEO title', 60], ['meta', 'Meta description', 160], ['slug', 'URL slug', 75], ['alt', 'Main photo alt text', 125], ['secondary', 'Secondary keywords (comma separated)', 0]];
+
+function fixButton(id, keyword, label = 'Preview fix') {
+  const b = el('button', label, 'secondary small-fix');
+  b.type = 'button';
+  b.addEventListener('click', () => openFix(id, keyword));
+  return b;
+}
+
+async function openFix(id, keyword) {
+  Object.assign(fixState, { id, keyword, plan: null, edits: {} });
+  $('#fix-what').textContent = `Product #${id} · new focus keyword “${keyword}”`;
+  $('#fix-body').innerHTML = '';
+  $('#fix-msg').textContent = 'Preparing the preview… (nothing is changed yet)';
+  $('#fix-undo').hidden = true; $('#fix-apply').hidden = false; $('#fix-recheck').hidden = false;
+  $('#fix-apply').disabled = true; $('#fix-recheck').disabled = true;
+  const dlg = $('#fix-dialog');
+  if (!dlg.open) dlg.showModal();
+  await previewFixNow();
+}
+
+function fixEdits() {
+  const edits = {};
+  for (const [k] of FIX_FIELDS) { const v = $(`#fix-${k}`)?.value; if (v != null && v.trim() !== String(fixState.plan?.after[k] ?? '').trim()) edits[k] = v; }
+  const kw = $('#fix-keyword')?.value.trim();
+  if (kw) fixState.keyword = kw;
+  return edits;
+}
+
+async function previewFixNow(edits = {}) {
+  if (fixState.busy) return;
+  fixState.busy = true;
+  $('#fix-apply').disabled = true; $('#fix-recheck').disabled = true;
+  try {
+    const plan = await call('fix', { action: 'preview', id: fixState.id, keyword: fixState.keyword, edits });
+    fixState.plan = plan;
+    fixState.edits = edits; // what Apply sends, so it saves exactly this preview
+    renderFixPlan(plan);
+    $('#fix-msg').textContent = 'Check the new values (you can change them), then apply. Nothing has been changed yet.';
+    $('#fix-apply').disabled = false;
+  } catch (err) { $('#fix-msg').textContent = err.message; }
+  finally { fixState.busy = false; $('#fix-recheck').disabled = false; }
+}
+
+function renderFixPlan(p) {
+  const box = $('#fix-body');
+  box.innerHTML = '';
+  $('#fix-what').textContent = `#${p.id} ${p.name} (${STATUS[p.status] || p.status}) · “${p.from || 'no keyword'}” → “${p.keyword}”`;
+  const kwRow = el('div', null, 'fix-row');
+  const kwLabel = el('label', 'New focus keyword'); kwLabel.htmlFor = 'fix-keyword';
+  const kwIn = el('input'); kwIn.id = 'fix-keyword'; kwIn.value = p.keyword;
+  kwRow.append(kwLabel, kwIn);
+  box.appendChild(kwRow);
+  for (const [k, label, max] of FIX_FIELDS) {
+    const row = el('div', null, 'fix-row');
+    const l = el('label', label); l.htmlFor = `fix-${k}`;
+    const input = el(k === 'meta' ? 'textarea' : 'input');
+    input.id = `fix-${k}`; input.value = p.after[k] ?? '';
+    if (k === 'meta') input.rows = 3;
+    const was = el('p', null, 'fix-was');
+    const old = k === 'secondary' ? p.before.focus_keyword.split(',').slice(1).join(',').trim() : p.before[k];
+    was.textContent = `Now: ${old || '(empty)'}`;
+    if (max) {
+      const c = el('span', '', 'count');
+      const upd = () => { c.textContent = `${input.value.trim().length}/${max}`; c.classList.toggle('over', input.value.trim().length > max); };
+      input.addEventListener('input', upd); upd();
+      l.append(' ', c);
+    }
+    row.append(l, input, was);
+    box.appendChild(row);
+  }
+  const facts = el('ul', null, 'fix-facts');
+  const li = (t, cls) => facts.appendChild(el('li', t, cls));
+  li(`Rank Math score: ${p.score.before} → ${p.score.after}/100`, p.score.after >= p.score.before ? 'pass' : 'warn');
+  li(`“${p.from}” changed to “${p.keyword}” in the text: ${p.textChanges.description} time(s) in the long description, ${p.textChanges.short_description} in the short description (photos, links and formatting stay).`);
+  if (p.after.slug !== p.before.slug) li(`URL: ${p.urlBefore.replace(/^https?:\/\//, '')} → ${p.urlAfter.replace(/^https?:\/\//, '')}${p.live ? ' — the old URL will redirect to the new one (301); this is checked after saving.' : ''}`, p.live ? 'warn' : '');
+  for (const c of p.conflicts) li(`Still competes with #${c.id} ${c.name}: ${c.reason}`, c.severity === 'high' ? 'fail' : 'warn');
+  if (p.failing.length) li(`Still to improve after the fix: ${p.failing.join('; ')}`, 'warn');
+  box.appendChild(facts);
+}
+
+$('#fix-recheck').addEventListener('click', () => previewFixNow({ ...fixState.edits, ...fixEdits() }));
+$('#fix-close').addEventListener('click', () => $('#fix-dialog').close());
+$('#fix-apply').addEventListener('click', async () => {
+  const p = fixState.plan;
+  if (!p || fixState.busy) return;
+  const edits = fixEdits();
+  const changedKw = fixState.keyword !== p.keyword;
+  if (changedKw || Object.keys(edits).length) {
+    // The owner changed something: show the recalculated preview before saving it.
+    await previewFixNow({ ...fixState.edits, ...edits });
+    $('#fix-msg').textContent = 'Preview updated with your changes. Check it and click Apply again.';
+    return;
+  }
+  const where = p.live ? `This changes the LIVE product #${p.id} on vaxaura.com` : `This changes draft #${p.id}`;
+  if (!confirm(`${where}: focus keyword “${p.keyword}”, SEO title, meta description, URL and main photo alt, and “${p.from}” in the descriptions. The current values are kept for Undo. Apply?`)) return;
+  fixState.busy = true;
+  $('#fix-apply').disabled = true; $('#fix-recheck').disabled = true;
+  $('#fix-msg').textContent = 'Saving and checking…';
+  try {
+    const r = await call('fix', { action: 'apply', id: p.id, keyword: p.keyword, edits: fixState.edits, modified: p.modified });
+    renderFixResult(r, 'Applied.');
+  } catch (err) { $('#fix-msg').textContent = err.message; $('#fix-apply').disabled = false; }
+  finally { fixState.busy = false; $('#fix-recheck').disabled = false; }
+});
+$('#fix-undo').addEventListener('click', async () => {
+  if (fixState.busy || !confirm(`Put back product #${fixState.id}’s keyword, SEO title, meta, URL, alt text and descriptions as they were before the fix?`)) return;
+  fixState.busy = true;
+  $('#fix-undo').disabled = true;
+  $('#fix-msg').textContent = 'Restoring…';
+  try { renderFixResult(await call('fix', { action: 'undo', id: fixState.id }), 'Restored the earlier version.'); }
+  catch (err) { $('#fix-msg').textContent = err.message; }
+  finally { fixState.busy = false; $('#fix-undo').disabled = false; }
+});
+
+function renderFixResult(r, done) {
+  const box = $('#fix-body');
+  box.innerHTML = '';
+  box.appendChild(checkList(r.checks.map((c) => ({ ...c }))));
+  for (const w of r.warnings || []) box.appendChild(el('p', w, 'small muted'));
+  if (r.url) { const p = el('p', null, 'small'); p.append('Product: ', link(r.url, r.url.replace(/^https?:\/\//, ''))); box.appendChild(p); }
+  const bad = r.checks.filter((c) => c.status !== 'pass').length;
+  $('#fix-msg').textContent = `${done} ${bad ? `${bad} check(s) need a look.` : 'All checks passed.'} Run the product or clash check again to see the new state.`;
+  $('#fix-apply').hidden = true; $('#fix-recheck').hidden = true;
+  $('#fix-undo').hidden = !r.canUndo;
+}
+
 
 $('#qa-store-run').addEventListener('click', async () => {
   const btn = $('#qa-store-run');

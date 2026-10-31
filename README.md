@@ -53,6 +53,14 @@ desktops (review form with a sticky score card), in light and dark mode.
      which one keeps the keyword (live first, then SEO score, then the older one) and a different free
      real-search keyword and URL for each of the others; and a checker that says whether a keyword
      is free before it is used.
+   - **Fix for products already in the shop** (`lib/fix.mjs`): "Preview fix" (in the cannibalization
+     section, or a keyword chip in the keyword & URL QA) shows the new focus keyword, SEO title, meta
+     description, URL and main photo alt next to the current ones, the Rank Math score before and
+     after, and how often the old keyword is replaced in the descriptions (text only: photos, links
+     and formatting stay). Every value can be edited. "Apply to the shop" saves it only after a
+     confirmation, keeps the previous values on the product for **Undo**, refuses if the product was
+     changed in WordPress after the preview, and checks that a live product's old URL redirects
+     (301) to the new one (WordPress does this itself for a changed slug).
 
 The SKU is always the next free number for the category (VAX-JP07, VAX-CW002, …), never invented; a
 new category gets the initials of its name (Hair Accessories → VAX-HA01). It follows the category on
@@ -109,10 +117,11 @@ The dev server reads the same variables from the environment or from
 ## Files
 
 - `public/` – the page (no build step)
-- `api/*.js` – Vercel functions: `login`, `logout`, `me`, `context`, `upload`, `fetch-photo`, `research`, `write`, `audit`, `draft`, `qa`
+- `api/*.js` – Vercel functions: `login`, `logout`, `me`, `context`, `upload`, `fetch-photo`, `research`, `write`, `audit`, `draft`, `qa`, `fix`
 - `lib/woo.mjs` – WordPress/WooCommerce/Rank Math client, SEO audit, draft creation and checks
 - `lib/ai.mjs` – Gemini research, listing and SEO repair loop
 - `lib/keywords.mjs` – keyword candidates from Google searches, keyword cannibalization
 - `lib/qa.mjs` – QA of a product and the shop-wide report
 - `lib/keyword-qa.mjs` – keyword & URL QA, cannibalization groups and fixes, keyword checker
+- `lib/fix.mjs` – keyword fix for products already in the shop: preview, apply, undo
 - `lib/http.mjs` – login cookie and route wrapper

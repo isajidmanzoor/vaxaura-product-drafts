@@ -16,6 +16,7 @@ function show(id, { history: mode = 'push' } = {}) {
     else window.history.replaceState({ view: id }, '');
   }
   view = id;
+  document.body.dataset.view = id; // e.g. the restored-work banner is not shown on QA & analytics
   if (id !== 'login') persist();
   if (id === 'photos') syncPhotoActions();
   if (id === 'review') syncSaved();
@@ -32,10 +33,15 @@ function show(id, { history: mode = 'push' } = {}) {
   $('#' + id + ' h1')?.focus({ preventScroll: true });
 }
 
+// No answer at all (offline, Wi-Fi dropped): a plain message instead of "Failed to fetch".
+const OFFLINE = 'No connection to the server. Check your internet connection and try again.';
 async function call(path, body) {
-  const res = await fetch('/api/' + path, body === undefined ? {} : {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  });
+  let res;
+  try {
+    res = await fetch('/api/' + path, body === undefined ? {} : {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+  } catch { throw Object.assign(new Error(OFFLINE), { status: 0 }); }
   const data = await res.json().catch(() => ({ error: `The server answered HTTP ${res.status}. Please try again.` }));
   if (res.status === 401 && path !== 'login') {
     $('#logout').hidden = true; $('#open-qa').hidden = true;
@@ -247,7 +253,9 @@ document.addEventListener('paste', (e) => {
 
 // The server only fetches the photo and hands it back; it is then prepared here like a photo from the device.
 async function fetchLinkPhoto(url) {
-  const res = await fetch('/api/fetch-photo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, raw: true }) });
+  let res;
+  try { res = await fetch('/api/fetch-photo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, raw: true }) }); }
+  catch { throw new Error(OFFLINE); }
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) { await call('me').catch(() => {}); }

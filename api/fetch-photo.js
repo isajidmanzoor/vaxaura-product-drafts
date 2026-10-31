@@ -7,6 +7,7 @@ import { uploadMedia, slugify } from '../lib/woo.mjs';
 // Media Library. The server fetches it, so only public web addresses are allowed (no internal IPs).
 const TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
 const MAX = 8 * 1024 * 1024;
+const RAW_MAX = 4.2 * 1024 * 1024;
 
 export function isPrivate(ip) {
   if (net.isIPv4(ip)) {
@@ -25,7 +26,7 @@ async function assertPublic(url) {
   if (!addrs.length || addrs.some((a) => isPrivate(a.address))) throw Object.assign(new Error('That link does not point to a public website.'), { status: 400 });
 }
 
-export default route('POST', async (req) => {
+export default route('POST', async (req, reply) => {
   let url;
   try { url = new URL(String(req.body?.url || '').trim()); } catch { throw Object.assign(new Error('That is not a valid link.'), { status: 400 }); }
   let res;
@@ -41,6 +42,19 @@ export default route('POST', async (req) => {
   if (Number(res.headers.get('content-length') || 0) > MAX) throw Object.assign(new Error('The photo is larger than 8 MB.'), { status: 413 });
   const buf = Buffer.from(await res.arrayBuffer());
   if (buf.length > MAX) throw Object.assign(new Error('The photo is larger than 8 MB.'), { status: 413 });
-  const base = slugify(decodeURIComponent(url.pathname.split('/').pop() || 'photo').replace(/\.[a-z0-9]+$/i, '')).slice(0, 60) || 'photo';
+  let base;
+  try { base = decodeURIComponent(url.pathname.split('/').pop() || 'photo'); } catch { base = 'photo'; }
+  base = slugify(base.replace(/\.[a-z0-9]+$/i, '')).slice(0, 60) || 'photo';
+  // raw: hand the photo back so the browser can add the Vaxaura branding before uploading it.
+  // Vercel caps responses at 4.5 MB, so bigger photos are refused with a clear way round.
+  if (req.body?.raw) {
+    if (buf.length > RAW_MAX) throw Object.assign(new Error('This photo is over 4 MB. Save it to your device and add it with “Choose photos” instead.'), { status: 413 });
+    reply.setHeader('Content-Type', mime);
+    reply.setHeader('X-File-Name', `${base}${TYPES[mime]}`);
+    reply.setHeader('Content-Length', String(buf.length));
+    reply.statusCode = 200;
+    reply.end(buf);
+    return;
+  }
   return uploadMedia(buf, `vaxaura-${base}${TYPES[mime]}`, mime);
 });

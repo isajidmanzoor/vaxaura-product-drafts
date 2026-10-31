@@ -102,11 +102,14 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .thumbs { list-style: none; padding: 0; margin: 16px 0 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 12px; }
 .thumbs:empty { display: none; }
 .thumbs li { position: relative; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--field); }
-.thumbs img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
+.thumbs img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; background: var(--field); }
 .thumbs .badge { position: absolute; top: 6px; left: 6px; padding: 1px 8px; border-radius: 6px; background: rgba(0, 0, 0, .62); color: #fff; font-size: .75rem; font-weight: 600; }
 .thumbs .badge.main { background: var(--gold); color: var(--gold-ink); }
-.thumbs .tools { display: flex; justify-content: space-between; gap: 4px; padding: 6px; }
-.thumbs .tools button { min-height: 32px; padding: 2px 10px; background: var(--card); color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+.thumbs .tools { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px; padding: 6px; }
+.thumbs .tools button { flex: 1 1 26%; min-height: 32px; padding: 2px 4px; background: var(--card); color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+.thumbs .tools .brand-btn { flex-basis: 40%; color: var(--gold); }
+.brand-toggle { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0 18px; font-size: .92rem; cursor: pointer; }
+.brand-toggle input { margin-top: 3px; accent-color: var(--gold); width: 18px; height: 18px; flex-shrink: 0; }
 
 /* Progress */
 .progress-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }

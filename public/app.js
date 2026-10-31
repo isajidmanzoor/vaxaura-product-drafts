@@ -1,3 +1,5 @@
+import { drawBrand, placeFor, brandAssets } from './brand.js';
+
 const $ = (s) => document.querySelector(s);
 const SCREENS = ['login', 'photos', 'progress', 'review', 'done'];
 const STEP_ORDER = ['photos', 'progress', 'review', 'done'];
@@ -79,6 +81,70 @@ $('#logout').addEventListener('click', async () => {
   location.reload();
 });
 
+// ---------- branding ----------
+// Every photo gets the Vaxaura branding in the browser before it is uploaded, so the drafts in
+// WordPress carry it. The logo goes to the calmest spot automatically; ▲ ▼ on a photo moves it.
+const BRAND_KEY = 'vx-brand';
+let brandOn = true;
+try { brandOn = localStorage.getItem(BRAND_KEY) !== 'off'; } catch { /* storage blocked: default on */ }
+const BRAND_STEP = 0.06;
+
+// Draws a photo at most maxSide px, with the branding when it is on. Returns the canvas and the
+// height (0–1) the logo block was placed at.
+async function renderPhoto(file, maxSide, cy) {
+  const bmp = await decode(file);
+  const w = bmp.width || bmp.naturalWidth, h = bmp.height || bmp.naturalHeight;
+  const scale = Math.min(1, maxSide / Math.max(w, h));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
+  canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  bmp.close?.();
+  if (!brandOn) return { canvas, cy: null };
+  const { logo } = await brandAssets();
+  const at = cy ?? placeFor(canvas);
+  drawBrand(canvas, logo, { cy: at });
+  return { canvas, cy: at };
+}
+
+// Thumbnail that shows exactly what will be uploaded.
+async function makePreview(it) {
+  if (!it.file || it.media) return; // uploaded photos are final
+  const ticket = (it.ticket = (it.ticket || 0) + 1);
+  try {
+    if (!brandOn) { setPreview(it, null); return; }
+    const { canvas, cy } = await renderPhoto(it.file, 640, it.brandY ?? it.autoY ?? null);
+    if (it.brandY == null) it.autoY = cy;
+    const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
+    if (ticket !== it.ticket || !state.items.includes(it)) return; // superseded or removed meanwhile
+    setPreview(it, URL.createObjectURL(blob));
+  } catch (err) {
+    // Unreadable photo (e.g. HEIC in Chrome): the upload step explains it; keep the original thumbnail.
+    if (ticket === it.ticket) setPreview(it, null);
+  }
+}
+function setPreview(it, url) {
+  const old = it.preview;
+  it.preview = url;
+  const img = it.key && state.items.includes(it) && document.querySelector(`#thumbs img[data-key="${CSS.escape(it.key)}"]`);
+  if (img) img.src = url || it.url;
+  // Revoked only after the thumbnail points elsewhere, so no image shows a dead link.
+  if (old) URL.revokeObjectURL(old);
+}
+function nudgeBrand(it, dir) {
+  if (it.media) return;
+  const from = it.brandY ?? it.autoY ?? 0.42;
+  it.brandY = Math.max(0.12, Math.min(0.7, Math.round((from + dir * BRAND_STEP) * 100) / 100));
+  persist();
+  makePreview(it);
+}
+$('#brand-on').checked = brandOn;
+$('#brand-on').addEventListener('change', (e) => {
+  brandOn = e.target.checked;
+  try { localStorage.setItem(BRAND_KEY, brandOn ? 'on' : 'off'); } catch { /* not kept */ }
+  renderThumbs();
+  state.items.forEach(makePreview);
+});
+
 // ---------- 1. photos ----------
 function renderThumbs() {
   const ol = $('#thumbs');
@@ -86,24 +152,37 @@ function renderThumbs() {
   state.items.forEach((it, i) => {
     const li = document.createElement('li');
     const img = document.createElement('img');
-    img.src = it.url; img.alt = `Photo ${i + 1}`;
+    img.src = it.preview || it.url; img.alt = `Photo ${i + 1}`;
+    if (it.key) img.dataset.key = it.key;
     const badge = document.createElement('span');
     badge.className = 'badge' + (i === 0 ? ' main' : '');
     badge.textContent = i === 0 ? 'Main photo' : String(i + 1);
     const tools = document.createElement('div');
     tools.className = 'tools';
-    for (const [act, label, text, disabled] of [
+    const buttons = [
       ['up', `Move photo ${i + 1} earlier`, '←', i === 0],
       ['del', `Remove photo ${i + 1}`, '✕', false],
       ['down', `Move photo ${i + 1} later`, '→', i === state.items.length - 1],
-    ]) {
+    ];
+    // Uploaded photos are final; photos still in the browser can have their branding moved.
+    if (brandOn && it.file && !it.media) buttons.push(['brand-up', `Move the branding on photo ${i + 1} up`, '▲', (it.brandY ?? it.autoY ?? 1) <= 0.12],
+      ['brand-down', `Move the branding on photo ${i + 1} down`, '▼', (it.brandY ?? it.autoY ?? 0) >= 0.7]);
+    for (const [act, label, text, disabled] of buttons) {
       const b = document.createElement('button');
       b.type = 'button'; b.textContent = text; b.disabled = disabled;
       b.setAttribute('aria-label', label); b.title = label;
+      if (act.startsWith('brand')) b.className = 'brand-btn';
       b.addEventListener('click', () => {
-        if (act === 'del') forget(state.items.splice(i, 1)[0]);
+        if (act === 'del') {
+          const [gone] = state.items.splice(i, 1);
+          forget(gone);
+          gone.ticket = (gone.ticket || 0) + 1; // cancels a preview still being drawn
+          queueMicrotask(() => { setPreview(gone, null); if (gone.url?.startsWith('blob:')) URL.revokeObjectURL(gone.url); });
+        }
         if (act === 'up') [state.items[i - 1], state.items[i]] = [state.items[i], state.items[i - 1]];
         if (act === 'down') [state.items[i + 1], state.items[i]] = [state.items[i], state.items[i + 1]];
+        if (act === 'brand-up') nudgeBrand(it, -1);
+        if (act === 'brand-down') nudgeBrand(it, 1);
         renderThumbs();
       });
       tools.appendChild(b);
@@ -124,8 +203,10 @@ function addFiles(list) {
   for (const file of list) {
     if (file.type.startsWith('image/') || /\.(heic|heif)$/i.test(file.name)) {
       const key = keyFor();
-      state.items.push({ file, key, url: URL.createObjectURL(file) });
+      const it = { file, key, url: URL.createObjectURL(file) };
+      state.items.push(it);
       files('readwrite', (s) => s.put(file, key)).catch(() => {}); // kept in case the page is left before uploading
+      makePreview(it);
     } else rejected.push(file.name);
   }
   $('#link-error').textContent = rejected.length ? `Not a photo, skipped: ${rejected.join(', ')}` : '';
@@ -137,7 +218,21 @@ const drop = $('#drop');
 ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', (e) => addFiles(e.dataTransfer.files));
 
-// Photo links (supplier site, Daraz...): the server downloads them into the Media Library.
+// With branding on, the server only fetches the photo and hands it back, so it is branded here
+// like a photo from the device; with branding off it goes straight into the Media Library.
+async function fetchLinkPhoto(url) {
+  const res = await fetch('/api/fetch-photo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, raw: true }) });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) { await call('me').catch(() => {}); }
+    throw new Error(data.error || `The photo could not be fetched (HTTP ${res.status}).`);
+  }
+  const type = (res.headers.get('content-type') || 'image/jpeg').split(';')[0];
+  const name = res.headers.get('x-file-name') || 'linked-photo';
+  return new File([await res.blob()], name, { type });
+}
+
+// Photo links (supplier site, Daraz...).
 $('#link-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const input = $('#link');
@@ -155,9 +250,12 @@ $('#link-form').addEventListener('submit', async (e) => {
     btn.textContent = 'Adding…';
     btn.setAttribute('aria-label', `Adding photo ${k + 1} of ${links.length}`);
     try {
-      const media = await call('fetch-photo', { url });
-      state.items.push({ media, url: media.thumb });
-      renderThumbs();
+      if (brandOn) addFiles([await fetchLinkPhoto(url)]);
+      else {
+        const media = await call('fetch-photo', { url });
+        state.items.push({ media, url: media.thumb });
+        renderThumbs();
+      }
     } catch (err) { failed.push({ url, msg: err.message }); }
   }
   btn.disabled = false; btn.textContent = 'Add'; btn.removeAttribute('aria-label');
@@ -178,13 +276,9 @@ async function decode(file) {
     throw new Error(`"${file.name}" could not be opened by this browser. If it is an iPhone HEIC photo, share it as JPG (or set Camera → Formats → Most Compatible) and try again.`);
   } finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
 }
-async function shrink(file) {
-  const bmp = await decode(file);
-  const w = bmp.width || bmp.naturalWidth, h = bmp.height || bmp.naturalHeight;
-  const scale = Math.min(1, 1600 / Math.max(w, h));
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
-  canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+// The branding uses the same spot as the preview (the stored or moved height).
+async function shrink(it) {
+  const { canvas } = await renderPhoto(it.file, 1600, it.brandY ?? it.autoY ?? null);
   const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.88));
   const buf = new Uint8Array(await blob.arrayBuffer());
   let bin = '';
@@ -223,10 +317,16 @@ async function run() {
     const todo = state.items.filter((it) => !it.media);
     for (const [k, it] of todo.entries()) {
       s = step(`Uploading photo ${k + 1} of ${todo.length}`);
-      it.media = await call('upload', { name: it.file.name, mime: 'image/jpeg', data: await shrink(it.file) });
+      it.media = await call('upload', { name: it.file.name, mime: 'image/jpeg', data: await shrink(it) });
+      // From now on the thumbnail is the uploaded (branded) photo itself.
+      const original = it.url;
+      if (it.media.thumb) it.url = it.media.thumb;
+      setPreview(it, null);
+      if (original !== it.url && original.startsWith('blob:')) URL.revokeObjectURL(original);
       forget(it); // uploaded: the Media Library copy is kept instead of the file
       s.done(`Photo ${k + 1} of ${todo.length} uploaded`);
     }
+    if (todo.length) renderThumbs(); // Photos now shows the uploaded photos, without the move buttons
     persist(true);
     state.media = state.items.map((it) => it.media);
     const mediaIds = state.media.map((m) => m.id);
@@ -554,7 +654,7 @@ function renderDone(s) {
 }
 
 async function resetWork() {
-  for (const it of state.items) if (it.file) URL.revokeObjectURL(it.url);
+  for (const it of state.items) { setPreview(it, null); if (it.url?.startsWith("blob:")) URL.revokeObjectURL(it.url); }
   Object.assign(state, { items: [], media: [], notes: '', sources: [], market: null, facts: '', product: null, warnings: [], dirty: false, saved: null, photoKey: '' });
   $('#hints').value = ''; $('#link').value = ''; $('#link-error').textContent = '';
   $('#restored').hidden = true;
@@ -613,7 +713,7 @@ function persist(now) {
     localStorage.setItem(KEEP, JSON.stringify({
       at: Date.now(), view, interrupted: running || leftDuringRun,
       hints: $('#hints').value,
-      items: state.items.map((it) => (it.media ? { media: it.media } : { key: it.key })),
+      items: state.items.map((it) => (it.media ? { media: it.media } : { key: it.key, brandY: it.brandY ?? null })),
       media: state.media, notes: state.notes, sources: state.sources, market: state.market, facts: state.facts,
       warnings: state.warnings, saved: state.saved, photoKey: state.photoKey, dirty: state.dirty,
       product: state.product ? readForm() : null, reviewTime: $('#review-time').textContent,
@@ -631,7 +731,7 @@ async function restore() {
   for (const it of d.items || []) {
     if (it.media) { items.push({ media: it.media, url: it.media.thumb }); continue; }
     const file = await files('readonly', (s) => s.get(it.key)).catch(() => null);
-    if (file) items.push({ file, key: it.key, url: URL.createObjectURL(file) }); else lost++;
+    if (file) items.push({ file, key: it.key, url: URL.createObjectURL(file), brandY: typeof it.brandY === 'number' ? it.brandY : null }); else lost++;
   }
   // Drop files no longer in the list (e.g. removed while the page was closing).
   const inUse = new Set(items.map((it) => it.key).filter(Boolean));
@@ -645,6 +745,7 @@ async function restore() {
   });
   $('#hints').value = d.hints || '';
   renderThumbs();
+  state.items.forEach(makePreview);
   if (state.product) {
     fillForm(state.product);
     renderWarnings();

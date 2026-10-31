@@ -1,11 +1,11 @@
 import { drawBrand, placeFor, brandAssets } from './brand.js';
 
 const $ = (s) => document.querySelector(s);
-const SCREENS = ['login', 'photos', 'progress', 'review', 'done'];
+const SCREENS = ['login', 'photos', 'progress', 'review', 'done', 'qa'];
 const STEP_ORDER = ['photos', 'progress', 'review', 'done'];
 
 // items: photos in order; each keeps its Media Library upload (media) once uploaded, so reordering is free.
-const state = { items: [], media: [], notes: '', sources: [], market: null, facts: '', product: null, ctx: null, hints: '', warnings: [], dirty: false, saved: null, photoKey: '' };
+const state = { items: [], media: [], notes: '', sources: [], market: null, facts: '', product: null, ctx: null, hints: '', warnings: [], dirty: false, saved: null, photoKey: '', stats: null };
 
 // Each screen is a browser history entry, so the phone's Back button moves between steps.
 let view = null;
@@ -21,7 +21,7 @@ function show(id, { history: mode = 'push' } = {}) {
   if (id === 'review') syncSaved();
   for (const s of SCREENS) $('#' + s).hidden = s !== id;
   const stepper = $('#stepper');
-  stepper.hidden = id === 'login';
+  stepper.hidden = id === 'login' || id === 'qa';
   const at = STEP_ORDER.indexOf(id);
   stepper.querySelectorAll('li').forEach((li, i) => {
     li.classList.toggle('current', i === at);
@@ -38,7 +38,7 @@ async function call(path, body) {
   });
   const data = await res.json().catch(() => ({ error: `The server answered HTTP ${res.status}. Please try again.` }));
   if (res.status === 401 && path !== 'login') {
-    $('#logout').hidden = true;
+    $('#logout').hidden = true; $('#open-qa').hidden = true;
     $('#login-error').textContent = 'Your session has ended. Please sign in again; your work on this page is kept.';
     show('login');
   }
@@ -55,7 +55,7 @@ async function start() {
     ? `Setup incomplete: ${missing.join(', ')} ${missing.length > 1 ? 'are' : 'is'} not set in Vercel (Project → Settings → Environment Variables), then redeploy.`
     : '';
   if (!me.loggedIn) return show('login');
-  $('#logout').hidden = false;
+  $('#logout').hidden = false; $('#open-qa').hidden = false;
   state.ctx = await call('context');
   // First visit of this page: bring back work kept from before. After a re-login mid-way: carry on.
   const kept = restored ? null : await restore().catch(() => null);
@@ -114,7 +114,7 @@ async function makePreview(it) {
     if (!brandOn) { setPreview(it, null); return; }
     const { canvas, cy } = await renderPhoto(it.file, 640, it.brandY ?? it.autoY ?? null);
     if (it.brandY == null) it.autoY = cy;
-    const { blob } = await encode(canvas, wantsWebp(it.file), 0.85);
+    const { blob } = await encode(canvas, true, 0.85);
     if (ticket !== it.ticket || !state.items.includes(it)) return; // superseded or removed meanwhile
     setPreview(it, URL.createObjectURL(blob));
   } catch (err) {
@@ -245,8 +245,7 @@ document.addEventListener('paste', (e) => {
   $('#link-form').requestSubmit();
 });
 
-// With branding on, the server only fetches the photo and hands it back, so it is branded here
-// like a photo from the device; with branding off it goes straight into the Media Library.
+// The server only fetches the photo and hands it back; it is then prepared here like a photo from the device.
 async function fetchLinkPhoto(url) {
   const res = await fetch('/api/fetch-photo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, raw: true }) });
   if (!res.ok) {
@@ -276,14 +275,9 @@ $('#link-form').addEventListener('submit', async (e) => {
   for (const [k, url] of links.entries()) {
     btn.textContent = 'Adding…';
     btn.setAttribute('aria-label', `Adding photo ${k + 1} of ${links.length}`);
-    try {
-      if (brandOn) addFiles([await fetchLinkPhoto(url)]);
-      else {
-        const media = await call('fetch-photo', { url });
-        state.items.push({ media, url: media.thumb });
-        renderThumbs();
-      }
-    } catch (err) { failed.push({ url, msg: err.message }); }
+    // Always fetched and prepared here like a photo from the device, so it is WebP under 100 KB
+    // (and branded when branding is on).
+    try { addFiles([await fetchLinkPhoto(url)]); } catch (err) { failed.push({ url, msg: err.message }); }
   }
   btn.disabled = false; btn.textContent = 'Add'; btn.removeAttribute('aria-label');
   input.value = failed.map((f) => f.url).join(' ');
@@ -303,20 +297,37 @@ async function decode(file) {
     throw new Error(`"${file.name}" could not be opened by this browser. If it is an iPhone HEIC photo, share it as JPG (or set Camera → Formats → Most Compatible) and try again.`);
   } finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
 }
-// The branding uses the same spot as the preview (the stored or moved height). PNG and WebP
-// photos are saved as WebP (much smaller than PNG, see-through parts stay see-through); JPG stays JPG.
+// Every photo is saved as WebP of at most 100 KB (fast pages; see-through parts stay see-through).
+// The largest size and best quality that fit are used: first the quality is lowered a little, then
+// the size, never below 600 px. The branding uses the same spot as the preview.
+const PHOTO_LIMIT = 100 * 1000; // bytes: under 100 KB however the KB is counted
+const FIT_STEPS = [[1600, 0.85], [1600, 0.78], [1400, 0.8], [1400, 0.74], [1200, 0.8], [1200, 0.74], [1200, 0.68], [1000, 0.78],
+  [1000, 0.7], [1000, 0.62], [900, 0.66], [800, 0.66], [800, 0.56], [700, 0.56], [600, 0.5]];
 async function shrink(it) {
   const { canvas } = await renderPhoto(it.file, 1600, it.brandY ?? it.autoY ?? null);
-  const { blob, mime } = await encode(canvas, wantsWebp(it.file), 0.88);
-  const buf = new Uint8Array(await blob.arrayBuffer());
+  let out, side = 0, scaled = canvas;
+  for (const [max, q] of FIT_STEPS) {
+    if (max !== side) { side = max; scaled = scaleTo(canvas, max); }
+    out = await encode(scaled, true, q);
+    if (out.blob.size <= PHOTO_LIMIT) break;
+  }
+  const buf = new Uint8Array(await out.blob.arrayBuffer());
   let bin = '';
   for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-  return { data: btoa(bin), mime };
+  return { data: btoa(bin), mime: out.mime, stats: { before: it.file.size, after: out.blob.size, width: scaled.width, height: scaled.height } };
+}
+function scaleTo(canvas, max) {
+  const k = Math.min(1, max / Math.max(canvas.width, canvas.height));
+  if (k === 1) return canvas;
+  const c = document.createElement('canvas');
+  c.width = Math.round(canvas.width * k); c.height = Math.round(canvas.height * k);
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(canvas, 0, 0, c.width, c.height);
+  return c;
 }
 const EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
-function wantsWebp(file) {
-  return /^image\/(png|webp)$/.test(file.type) || (!file.type && /\.(png|webp)$/i.test(file.name));
-}
+const kb = (bytes) => Math.round((bytes || 0) / 102.4) / 10;
 // Browsers that cannot write WebP (older Safari) hand back a PNG instead: those get a JPG, with
 // see-through parts on white rather than black.
 async function encode(canvas, webp, quality) {
@@ -364,47 +375,66 @@ async function run() {
   const started = Date.now();
   const stop = startTimer();
   let s;
+  // Analytics of this run (shown after saving and in QA & analytics).
+  const stats = { started, ms: {}, photos: [], rounds: 0 };
+  const lap = (k, t0) => { stats.ms[k] = (stats.ms[k] || 0) + Date.now() - t0; };
   try {
+    // Categories or products added in WordPress meanwhile are picked up.
+    state.ctx = await call('context').catch(() => state.ctx);
     const todo = state.items.filter((it) => !it.media);
+    let t0 = Date.now();
     for (const [k, it] of todo.entries()) {
       s = step(`Uploading photo ${k + 1} of ${todo.length}`);
-      it.media = await call('upload', { name: it.file.name, ...(await shrink(it)) });
+      const { stats: ps, ...photo } = await shrink(it);
+      it.media = await call('upload', { name: it.file.name, ...photo });
+      stats.photos.push(ps);
       // From now on the thumbnail is the uploaded (branded) photo itself.
       const original = it.url;
       if (it.media.thumb) it.url = it.media.thumb;
       setPreview(it, null);
       if (original !== it.url && original.startsWith('blob:')) URL.revokeObjectURL(original);
       forget(it); // uploaded: the Media Library copy is kept instead of the file
-      s.done(`Photo ${k + 1} of ${todo.length} uploaded`);
+      s.done(`Photo ${k + 1} of ${todo.length} uploaded · ${kb(ps.after)} KB WebP`);
     }
+    lap('upload', t0);
     if (todo.length) renderThumbs(); // Photos now shows the uploaded photos, without the move buttons
     persist(true);
     state.media = state.items.map((it) => it.media);
     const mediaIds = state.media.map((m) => m.id);
 
     s = step('Identifying the product and researching the Pakistani market');
+    t0 = Date.now();
     const r = await call('research', { mediaIds, hints: state.hints });
+    lap('research', t0);
     Object.assign(state, { notes: r.notes, sources: r.sources, market: r.market, facts: r.facts });
     const ex = r.market?.exact.length || 0, si = r.market?.similar.length || 0;
-    s.done(`Identified: ${r.identification?.product || 'product'}${r.identification?.brand ? ` (${r.identification.brand})` : ''} · Daraz: ${ex} same, ${si} similar of ${r.market?.total ?? 0}`);
+    const cat = r.market?.categories?.length ? '' : r.market?.newCategory ? ` · new category: ${r.market.newCategory}` : '';
+    s.done(`Identified: ${r.identification?.product || 'product'}${r.identification?.brand ? ` (${r.identification.brand})` : ''} · Daraz: ${ex} same, ${si} similar of ${r.market?.total ?? 0} · ${r.market?.keywords?.length || 0} real search keywords${cat}`);
 
     s = step('Writing the SEO listing');
+    t0 = Date.now();
     const ask = { mediaIds, hints: state.hints, notes: state.notes, market: state.market, facts: state.facts };
     let w = await call('write', ask);
+    lap('write', t0);
+    stats.firstScore = w.audit.score;
     s.done(`Listing written · SEO ${w.audit.score}/100`);
     // Up to 2 repair rounds while a test still fails; each round is its own request.
     for (let round = 1; round <= 2 && w.audit.fixable.length; round++) {
       const n = w.audit.fixable.length;
       s = step(`Improving ${n} SEO check${n > 1 ? 's' : ''} (round ${round})`);
+      t0 = Date.now();
       try {
         const next = await call('write', { ...ask, previous: w.json });
+        stats.rounds = round;
         s.done(`Round ${round} done · SEO ${next.audit.score}/100`);
         if (next.audit.score >= w.audit.score) w = next;
       } catch (err) {
         s.fail(`Round ${round} skipped: ${err.message}`); // keep the listing; the owner can fix the rest
         break;
-      }
+      } finally { lap('repair', t0); }
     }
+    Object.assign(stats, { score: w.audit.score, model: w.model, keyword: w.audit.kw, ms: { ...stats.ms, total: Date.now() - started } });
+    state.stats = stats;
     state.product = w.product;
     state.saved = null;
     state.photoKey = photoKey();
@@ -482,15 +512,9 @@ function fillForm(p) {
   F('attributes').value = (p.attributes || []).map((a) => `${a.name}: ${a.options.join(', ')}`).join('\n');
   F('focus_keyword').value = p.seo.focus_keyword; F('seo_title').value = p.seo.title; F('seo_description').value = p.seo.description;
 
-  const cats = $('#cats');
-  cats.innerHTML = '';
-  for (const c of state.ctx.categories) {
-    const label = document.createElement('label');
-    const box = document.createElement('input');
-    box.type = 'checkbox'; box.value = c.slug; box.checked = p.categories.includes(c.slug);
-    label.append(box, ` ${c.name}`);
-    cats.appendChild(label);
-  }
+  F('sku').dataset.auto = p.sku_auto ?? p.sku ?? '';
+  renderCats(p.categories || [], p.new_category || '', p.new_category_parent || '');
+  renderKeywordIdeas();
 
   const alts = $('#alts');
   alts.innerHTML = '';
@@ -513,6 +537,108 @@ function fillForm(p) {
   renderMarket(state.market);
   $('#notes').textContent = state.notes;
   updateLive();
+}
+
+// Categories as in the shop ("Jewellery › Pendants"); placeholder and empty duplicate categories are
+// left out unless the listing already uses them.
+function renderCats(checked, newCat = F('new_category').value, newParent = F('new_category_parent').value) {
+  const cats = $('#cats');
+  cats.innerHTML = '';
+  const list = state.ctx?.categories || [];
+  for (const c of list.filter((x) => !x.hidden || checked.includes(x.slug))) {
+    const label = document.createElement('label');
+    const box = document.createElement('input');
+    box.type = 'checkbox'; box.value = c.slug; box.checked = checked.includes(c.slug);
+    label.append(box, ` ${c.path || c.name}`);
+    cats.appendChild(label);
+  }
+  const sel = F('new_category_parent');
+  sel.innerHTML = '';
+  sel.append(new Option('Top level', ''));
+  for (const c of list.filter((x) => !x.parent && !x.hidden)) sel.append(new Option(c.name, c.slug));
+  sel.value = list.some((c) => c.slug === newParent) ? newParent : '';
+  F('new_category').value = newCat;
+  syncCatHint();
+}
+// The SKU follows the category (next free number, e.g. VAX-CW002) as long as the owner has not typed
+// their own; a new category gets the initials of its name (Hair Accessories -> VAX-HA01).
+function suggestSku() {
+  const ctx = state.ctx || {};
+  const checked = [...document.querySelectorAll('#cats input:checked')].map((i) => i.value);
+  const specific = checked.find((s) => ctx.categories?.find((c) => c.slug === s)?.parent) || checked[0];
+  const typed = F('new_category').value.trim();
+  const same = typed && ctx.categories?.find((c) => c.name.toLowerCase() === typed.toLowerCase());
+  const slug = specific || same?.slug;
+  if (slug) return ctx.nextSku?.[slug] || '';
+  if (!typed) return '';
+  const prefix = 'VAX-' + typed.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map((w) => w[0]).join('').toUpperCase().slice(0, 3);
+  const nums = (ctx.skus || []).filter((s) => s.startsWith(prefix) && /^\d+$/.test(s.slice(prefix.length))).map((s) => s.slice(prefix.length));
+  const width = Math.max(2, ...nums.map((n) => n.length));
+  return prefix + String((nums.length ? Math.max(...nums.map(Number)) : 0) + 1).padStart(width, '0');
+}
+function syncSku() {
+  const box = F('sku');
+  if (box.value.trim() !== (box.dataset.auto || '')) return; // typed by the owner: left alone
+  const next = suggestSku();
+  if (!next || next === box.value) return;
+  box.value = next; box.dataset.auto = next;
+}
+function syncCatHint() {
+  syncSku();
+  const none = !$('#cats input:checked');
+  const typed = F('new_category').value.trim();
+  const hint = $('#cat-hint');
+  hint.hidden = !none && !typed;
+  hint.textContent = typed ? `“${typed}” will be created as a new category when the draft is saved (an existing category with that name is reused).`
+    : 'No category fits yet: tick one above or type a new category.';
+}
+$('#cats-refresh').addEventListener('click', async () => {
+  const btn = $('#cats-refresh');
+  btn.disabled = true; btn.textContent = 'Refreshing…';
+  try {
+    state.ctx = await call('context');
+    renderCats([...$('#cats').querySelectorAll('input:checked')].map((i) => i.value));
+    refreshAudit();
+  } catch (err) { $('#form-errors').textContent = err.message; }
+  finally { btn.disabled = false; btn.textContent = '↻ Refresh categories from the shop'; }
+});
+
+// Real Google searches for this product: one click makes one the focus keyword (the secondary keywords stay).
+function renderKeywordIdeas() {
+  const pool = state.market?.keywords || [];
+  $('#kw-ideas').hidden = !pool.length;
+  const box = $('#kw-chips');
+  box.innerHTML = '';
+  const current = F('focus_keyword').value.split(',')[0].trim().toLowerCase();
+  for (const k of pool) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'kw-chip' + (k.kw === current ? ' on' : ''); b.textContent = k.kw;
+    b.title = `Suggested by Google ${k.hits} time${k.hits > 1 ? 's' : ''}`;
+    b.addEventListener('click', () => {
+      const rest = F('focus_keyword').value.split(',').slice(1).map((s) => s.trim()).filter((s) => s && s.toLowerCase() !== k.kw);
+      F('focus_keyword').value = [k.kw, ...rest].join(', ');
+      F('focus_keyword').dispatchEvent(new Event('input', { bubbles: true }));
+      renderKeywordIdeas();
+    });
+    box.appendChild(b);
+  }
+}
+
+// Other products competing for the same search (from the live audit).
+function renderClashes(conflicts = []) {
+  $('#clash').hidden = !conflicts.length;
+  const ul = $('#clash-list');
+  ul.innerHTML = '';
+  for (const c of conflicts) {
+    const li = document.createElement('li');
+    const badge = document.createElement('span');
+    badge.className = `sev ${c.severity}`; badge.textContent = c.severity === 'high' ? 'Must fix' : 'Check';
+    const a = document.createElement(c.url ? 'a' : 'span');
+    if (c.url) { a.href = c.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+    a.textContent = `#${c.id} ${c.name}`;
+    li.append(badge, ' ', a, ` (${STATUS[c.status] || c.status}) — ${c.reason}`);
+    ul.appendChild(li);
+  }
 }
 
 // Market evidence: how the price was suggested and which Daraz listings it rests on.
@@ -556,9 +682,11 @@ function readForm() {
   return {
     name: n(F('name').value), slug: n(F('slug').value),
     regular_price: n(F('regular_price').value).replace(/[^\d.]/g, ''), sale_price: n(F('sale_price').value).replace(/[^\d.]/g, ''),
-    sku: n(F('sku').value), stock_quantity: n(F('stock_quantity').value) === '' ? '' : Number(n(F('stock_quantity').value)),
+    sku: n(F('sku').value), sku_auto: F('sku').dataset.auto || '', stock_quantity: n(F('stock_quantity').value) === '' ? '' : Number(n(F('stock_quantity').value)),
     weight: n(F('weight').value), dimensions: { length: n(F('length').value), width: n(F('width').value), height: n(F('height').value) },
     categories: [...$('#cats').querySelectorAll('input:checked')].map((i) => i.value),
+    new_category: n(F('new_category').value), new_category_parent: n(F('new_category_parent').value),
+    keyword_pool: (state.market?.keywords || []).map((k) => k.kw),
     tags: F('tags').value.split(',').map(n).filter(Boolean),
     attributes: F('attributes').value.split('\n').map((l) => l.split(':')).filter((x) => x.length > 1 && n(x[0]))
       .map(([k, ...v]) => ({ name: n(k), options: v.join(':').split(',').map(n).filter(Boolean) })),
@@ -608,6 +736,8 @@ const FIX = {
   qDensity: () => 'Use the keywords less often so the text reads naturally (at most 2.3%).',
   qKw: () => 'Make the focus keyword 2–4 words naming the product (no “price”, “Pakistan”, “buy” or “best”).',
   qClaims: (t) => `Remove or soften ${t.info} — neither your notes nor the label confirm it (add it to your notes if it is true).`,
+  qKwReal: () => 'Nobody searches this exact phrase. Click a real Google search under the focus keyword, then “Fix with AI” to rewrite the title, URL and text around it.',
+  qCannibal: (t) => `Another Vaxaura product targets this keyword (${t.info}), so the two pages would compete on Google. Choose another keyword or click “Fix with AI”.`,
 };
 
 function renderAudit(audit, errors) {
@@ -629,7 +759,50 @@ function renderAudit(audit, errors) {
   chip.textContent = failing ? `SEO ${audit.score}/100 · ${failing} to fix` : `SEO ${audit.score}/100 ✓`;
   chip.classList.toggle('full', full && !failing);
   $('#save-anyway').hidden = true;
+  renderClashes(audit.conflicts);
+  if (!fixing) {
+    $('#fix-ai').hidden = !failing;
+    $('#fix-ai').textContent = `Fix ${failing} check${failing > 1 ? 's' : ''} with AI`;
+  }
 }
+
+// "Fix with AI": the AI rewrites the listing as it is now on this page until the failing checks
+// pass (e.g. a new focus keyword, a keyword clash); prices, SKU, stock, categories, tags,
+// attributes and the owner's note stay as they are.
+let fixing = false;
+$('#fix-ai').addEventListener('click', async () => {
+  if (fixing || saving || !state.media.length) return;
+  fixing = true;
+  const btn = $('#fix-ai');
+  btn.disabled = true; btn.textContent = 'Fixing with AI…';
+  $('#fix-status').textContent = 'The AI is rewriting the listing; this can take a minute.';
+  clearTimeout(timer);
+  const before = readForm();
+  try {
+    const w = await call('write', {
+      mediaIds: state.media.map((m) => m.id), hints: state.hints, notes: state.notes, market: state.market, facts: state.facts, current: before,
+    });
+    // Edits made while the AI was working would be lost: ask first.
+    if (JSON.stringify(readForm()) !== JSON.stringify(before) && !confirm('You changed the listing while the AI was working. Replace it with the AI’s fixed version?')) {
+      $('#fix-status').textContent = 'Kept your edits; the AI’s version was not used.';
+      return;
+    }
+    state.product = w.product;
+    fillForm(w.product);
+    renderAudit(w.audit, []);
+    state.dirty = true;
+    persist();
+    refreshAudit();
+    $('#fix-status').textContent = `Done · SEO ${w.audit.score}/100${w.audit.fixable.length ? ` · ${w.audit.fixable.length} still to fix` : ''}.`;
+  } catch (err) {
+    $('#fix-status').textContent = '';
+    $('#form-errors').textContent = err.message;
+  } finally {
+    fixing = false;
+    btn.disabled = false;
+    refreshAudit();
+  }
+});
 
 // Live score: debounced, and an older answer never overwrites a newer one.
 let timer, auditSeq = 0;
@@ -639,19 +812,21 @@ function refreshAudit() {
     .then((r) => { if (seq === auditSeq) renderAudit(r.audit, r.errors); })
     .catch((e) => { if (seq === auditSeq) $('#form-errors').textContent = e.message; });
 }
-$('#form').addEventListener('input', () => {
+$('#form').addEventListener('input', (e) => {
   state.dirty = true;
   persist();
   updateLive();
+  if (e.target.name === 'new_category') syncCatHint();
+  if (e.target.name === 'focus_keyword') renderKeywordIdeas();
   clearTimeout(timer);
   timer = setTimeout(refreshAudit, 450);
 });
-$('#form').addEventListener('change', (e) => { if (e.target.type === 'checkbox') { state.dirty = true; persist(); clearTimeout(timer); refreshAudit(); } });
+$('#form').addEventListener('change', (e) => { if (e.target.type === 'checkbox') { state.dirty = true; syncCatHint(); persist(); clearTimeout(timer); refreshAudit(); } });
 $('#form').addEventListener('submit', (e) => e.preventDefault());
 
 let saving = false;
 async function save(force) {
-  if (saving) return;
+  if (saving || fixing) return;
   saving = true;
   clearTimeout(timer);
   const btn = $('#save'), alt = $('#save-anyway');
@@ -660,9 +835,11 @@ async function save(force) {
   try {
     const r = await call('draft', { product: { ...readForm(), force } });
     state.dirty = false;
-    state.saved = { id: r.id, editUrl: r.editUrl, name: F('name').value.trim(), score: r.audit.score, checks: r.checks, warnings: r.warnings };
+    state.saved = { id: r.id, editUrl: r.editUrl, name: F('name').value.trim(), keyword: F('focus_keyword').value.split(',')[0].trim(), score: r.audit.score, checks: r.checks, warnings: r.warnings, stats: state.stats || null, qa: null };
+    remember(state.saved);
     renderDone(state.saved);
     show('done');
+    runQa(state.saved);
   } catch (err) {
     $('#form-errors').textContent = err.message;
     if (err.data?.audit) {
@@ -702,11 +879,255 @@ function renderDone(s) {
   const warn = $('#done-warnings');
   warn.innerHTML = '';
   for (const w of s.warnings || []) { const li = document.createElement('li'); li.textContent = duplicateText(w); warn.appendChild(li); }
+  renderRunStats(s.stats);
+  if (s.qa) { renderQa($('#qa-result'), s.qa); $('#qa-status').textContent = `Checked ${new Date(s.qa.at).toLocaleString()}.`; }
+  else { $('#qa-result').innerHTML = ''; $('#qa-status').textContent = ''; }
+}
+
+// ---------- QA & analytics ----------
+const QA_ICON = { pass: '✓', warn: '!', fail: '✗' };
+const secs = (ms) => (ms ? `${Math.round(ms / 100) / 10} s` : '–');
+
+// QA of the saved draft, straight after saving (read-only, from the shop itself).
+let qaSeq = 0;
+async function runQa(s) {
+  const seq = ++qaSeq;
+  $('#qa-status').textContent = 'Checking the saved draft in the shop…';
+  $('#qa-result').innerHTML = '';
+  $('#qa-again').disabled = true;
+  try {
+    const qa = await call('qa', { id: s.id });
+    if (seq !== qaSeq || state.saved?.id !== s.id) return;
+    s.qa = qa;
+    remember(s);
+    persist();
+    renderQa($('#qa-result'), qa);
+    $('#qa-status').textContent = `Checked ${new Date(qa.at).toLocaleString()}.`;
+  } catch (err) {
+    if (seq === qaSeq) $('#qa-status').textContent = `QA could not run: ${err.message}`;
+  } finally { if (seq === qaSeq) $('#qa-again').disabled = false; }
+}
+$('#qa-again').addEventListener('click', () => state.saved && runQa(state.saved));
+
+// Grouped checks: failures and warnings first and open, passes folded away.
+function renderQa(box, qa) {
+  box.innerHTML = '';
+  const head = document.createElement('p');
+  head.className = 'qa-sum';
+  head.innerHTML = '';
+  for (const [k, label] of [['pass', 'passed'], ['warn', 'to check'], ['fail', 'failed']]) {
+    const b = document.createElement('span');
+    b.className = `pill ${k}`; b.textContent = `${qa.summary[k]} ${label}`;
+    head.append(b, ' ');
+  }
+  if (qa.permalink || qa.editUrl) {
+    const a = document.createElement('a');
+    a.href = qa.editUrl || qa.permalink; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = `#${qa.id} ${qa.name}`;
+    head.append(a);
+  }
+  box.appendChild(head);
+  const m = qa.metrics || {};
+  const facts = document.createElement('p');
+  facts.className = 'small muted';
+  facts.textContent = [`SEO ${m.score}/100`, m.keyword ? `keyword “${m.keyword}”` : 'no focus keyword', `${m.words} words`,
+    `${(m.photos || []).length} photos, ${m.totalKB ?? '?'} KB in total (${(m.photos || []).map((p) => `${p.kb ?? '?'} KB`).join(', ')})`].join(' · ');
+  box.appendChild(facts);
+  const groups = [...new Set(qa.checks.map((c) => c.group))];
+  for (const g of groups) {
+    const list = qa.checks.filter((c) => c.group === g);
+    const bad = list.filter((c) => c.status !== 'pass').length;
+    const d = document.createElement('details');
+    d.className = 'qa-group';
+    d.open = bad > 0;
+    const sum = document.createElement('summary');
+    sum.textContent = `${g} — ${bad ? `${bad} to look at` : 'all good'}`;
+    const ul = document.createElement('ul');
+    ul.className = 'qa-checks';
+    for (const c of list.sort((a, b) => ['fail', 'warn', 'pass'].indexOf(a.status) - ['fail', 'warn', 'pass'].indexOf(b.status))) {
+      const li = document.createElement('li');
+      li.className = c.status;
+      const i = document.createElement('span');
+      i.className = 'qa-icon'; i.textContent = QA_ICON[c.status]; i.setAttribute('aria-label', c.status);
+      li.append(i, ` ${c.label}${c.info ? ` — ${c.info}` : ''}`);
+      ul.appendChild(li);
+    }
+    d.append(sum, ul);
+    box.appendChild(d);
+  }
+}
+
+function renderRunStats(st) {
+  const dl = $('#run-stats');
+  dl.innerHTML = '';
+  if (!st) { dl.textContent = 'No timing for this draft (it was written before this page was opened).'; return; }
+  const before = st.photos.reduce((n, p) => n + (p.before || 0), 0), after = st.photos.reduce((n, p) => n + (p.after || 0), 0);
+  const rows = [
+    ['Total time', secs(st.ms.total)],
+    ['Photo upload', `${secs(st.ms.upload)} · ${st.photos.length} photo${st.photos.length === 1 ? '' : 's'}`],
+    ['Research', secs(st.ms.research)],
+    ['Writing', `${secs(st.ms.write)}${st.rounds ? ` + ${st.rounds} repair round${st.rounds > 1 ? 's' : ''} (${secs(st.ms.repair)})` : ''}`],
+    ['SEO score', `${st.firstScore ?? '–'} → ${st.score ?? '–'}/100`],
+    ['Photo weight', st.photos.length ? `${kb(before)} KB → ${kb(after)} KB (${before ? Math.round((1 - after / before) * 100) : 0}% smaller; largest ${kb(Math.max(...st.photos.map((p) => p.after)))} KB)` : 'no new photos'],
+    ['AI model', st.model || '–'],
+  ];
+  for (const [k, v] of rows) { const dt = document.createElement('dt'); dt.textContent = k; const dd = document.createElement('dd'); dd.textContent = v; dl.append(dt, dd); }
+}
+
+// History of this tool's runs on this device (last 100), for the analytics screen.
+const RUNS = 'vx-runs';
+function runs() { try { return JSON.parse(localStorage.getItem(RUNS)) || []; } catch { return []; } }
+function remember(s) {
+  try {
+    const list = runs().filter((r) => r.id !== s.id);
+    const st = s.stats;
+    list.unshift({
+      id: s.id, name: s.name, at: Date.now(), score: s.score, ms: st?.ms?.total || null, rounds: st?.rounds ?? null,
+      photos: st?.photos?.length ?? null, before: st ? st.photos.reduce((n, p) => n + (p.before || 0), 0) : null, after: st ? st.photos.reduce((n, p) => n + (p.after || 0), 0) : null,
+      keyword: s.keyword || st?.keyword || '', qa: s.qa?.summary || null,
+    });
+    localStorage.setItem(RUNS, JSON.stringify(list.slice(0, 100)));
+  } catch { /* storage blocked: no history */ }
+}
+
+let qaFrom = 'photos';
+$('#open-qa').addEventListener('click', () => {
+  if (view === 'qa' || running) return;
+  qaFrom = view && view !== 'login' ? view : 'photos';
+  renderHistory();
+  show('qa');
+});
+$('#qa-back').addEventListener('click', () => show(qaFrom === 'qa' ? 'photos' : qaFrom));
+
+$('#qa-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $('#qa-id').value.trim().replace(/^#/, '');
+  if (!/^\d+$/.test(id)) { $('#qa-one-status').textContent = 'Enter the product ID (the number in the WordPress address, e.g. 536).'; return; }
+  const btn = e.submitter || $('#qa-form button');
+  btn.disabled = true;
+  $('#qa-one-status').textContent = `Checking product #${id}…`;
+  $('#qa-one').innerHTML = '';
+  try {
+    const qa = await call('qa', { id });
+    renderQa($('#qa-one'), qa);
+    $('#qa-one-status').textContent = '';
+  } catch (err) { $('#qa-one-status').textContent = err.status === 404 || /invalid id|404/i.test(err.message) ? `No product #${id} in the shop.` : err.message; }
+  finally { btn.disabled = false; }
+});
+
+$('#qa-store-run').addEventListener('click', async () => {
+  const btn = $('#qa-store-run');
+  btn.disabled = true;
+  $('#qa-store-status').textContent = 'Checking every product in the shop… (up to a minute)';
+  $('#qa-store').innerHTML = '';
+  try {
+    renderStore(await call('qa', { store: true }));
+    $('#qa-store-status').textContent = '';
+  } catch (err) { $('#qa-store-status').textContent = err.message; }
+  finally { btn.disabled = false; }
+});
+
+function el(tag, text, cls) { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
+function link(href, text) { const a = el('a', text); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer'; return a; }
+
+function renderStore(r) {
+  const box = $('#qa-store');
+  box.innerHTML = '';
+  const t = r.totals;
+  const tiles = el('div', null, 'tiles');
+  for (const [v, k, bad] of [
+    [t.products, `products (${Object.entries(t.byStatus).map(([s, n]) => `${n} ${STATUS[s] || s}`).join(', ')})`],
+    [`${t.avgScore}/100`, `average SEO · ${t.perfectScore} at 100`, t.avgScore < 90],
+    [t.clashes, `keyword clashes · ${t.overlaps} overlaps`, t.clashes > 0],
+    [t.heavyPhotos, `photos over 100 KB of ${t.photos} (${t.photoMB} MB)`, t.heavyPhotos > 0],
+    [t.skuIssues, 'SKUs missing or not VAX-XX00', t.skuIssues > 0],
+    [t.noKeyword, 'products without a focus keyword', t.noKeyword > 0],
+  ]) {
+    const d = el('div', null, 'tile' + (bad ? ' bad' : ''));
+    d.append(el('strong', String(v)), el('span', k));
+    tiles.appendChild(d);
+  }
+  box.appendChild(tiles);
+  box.appendChild(el('p', `Report from ${new Date(r.at).toLocaleString()}.`, 'small muted'));
+
+  if (r.clashes.length) {
+    box.appendChild(el('h3', 'Keyword cannibalization'));
+    const ul = el('ul', null, 'qa-checks');
+    for (const c of r.clashes) {
+      const li = el('li', null, c.severity === 'high' ? 'fail' : 'warn');
+      li.append(el('span', QA_ICON[c.severity === 'high' ? 'fail' : 'warn'], 'qa-icon'), ` #${c.a.id} ${c.a.name} ↔ #${c.b.id} ${c.b.name}: ${c.reason}`);
+      ul.appendChild(li);
+    }
+    box.appendChild(ul);
+    box.appendChild(el('p', 'Fix: give one of the two products a different focus keyword (open it in WordPress, or check it above for details).', 'small muted'));
+  }
+  if (r.junkCategories.length) {
+    box.appendChild(el('h3', 'Placeholder or duplicate categories'));
+    box.appendChild(el('p', `${r.junkCategories.map((c) => `${c.name} (${c.slug}, ${c.count} products)`).join(' · ')} — hidden in this tool; you can delete them in WordPress → Products → Categories.`, 'small'));
+  }
+  if (r.skuIssues.length) {
+    box.appendChild(el('h3', 'SKUs to tidy'));
+    box.appendChild(el('p', r.skuIssues.map((s) => `#${s.id} ${s.sku}`).join(' · '), 'small'));
+  }
+  box.appendChild(el('h3', 'Products (most issues first)'));
+  const wrap = el('div', null, 'table-wrap');
+  const table = el('table', null, 'qa-table');
+  const hr = el('tr');
+  for (const h of ['Product', 'Status', 'SEO', 'Keyword', 'Photos', 'Issues']) hr.appendChild(el('th', h));
+  table.appendChild(el('thead')).appendChild(hr);
+  const tb = el('tbody');
+  for (const p of r.products) {
+    const tr = el('tr');
+    const name = el('td');
+    name.append(p.url ? link(p.url, p.name) : p.name, el('small', ` #${p.id} · ${p.sku || 'no SKU'}`));
+    tr.append(name, el('td', STATUS[p.status] || p.status), el('td', String(p.score), p.score === 100 ? 'ok' : p.score < 80 ? 'bad' : ''),
+      el('td', p.keyword || '–'), el('td', `${p.photos} · ${p.totalKB ?? '?'} KB${p.heavyPhotos ? ` · ${p.heavyPhotos} over 100 KB` : ''}`, p.heavyPhotos ? 'bad' : ''));
+    const issues = el('td');
+    if (!p.issues.length) issues.textContent = '✓ none';
+    else {
+      const d = el('details');
+      d.append(el('summary', `${p.fail} failed · ${p.warn} to check`));
+      const ul = el('ul');
+      for (const i of p.issues) ul.appendChild(el('li', `${QA_ICON[i.status]} ${i.label}${i.info ? ` — ${i.info}` : ''}`, i.status));
+      d.appendChild(ul);
+      issues.appendChild(d);
+    }
+    tr.appendChild(issues);
+    tb.appendChild(tr);
+  }
+  table.appendChild(tb);
+  wrap.appendChild(table);
+  box.appendChild(wrap);
+}
+
+function renderHistory() {
+  const box = $('#qa-history');
+  box.innerHTML = '';
+  const list = runs();
+  if (!list.length) { box.appendChild(el('p', 'No drafts saved with this tool on this device yet.', 'small muted')); return; }
+  const timed = list.filter((r) => r.ms);
+  const avg = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+  const before = list.reduce((n, r) => n + (r.before || 0), 0), after = list.reduce((n, r) => n + (r.after || 0), 0);
+  const tiles = el('div', null, 'tiles');
+  for (const [v, k] of [
+    [list.length, 'drafts saved'],
+    [`${Math.round(avg(list.map((r) => r.score)))}/100`, 'average SEO at saving'],
+    [timed.length ? secs(avg(timed.map((r) => r.ms))) : '–', 'average time per product'],
+    [before ? `${Math.round((1 - after / before) * 100)}%` : '–', `photo weight saved (${kb(before)} → ${kb(after)} KB)`],
+  ]) { const d = el('div', null, 'tile'); d.append(el('strong', String(v)), el('span', k)); tiles.appendChild(d); }
+  box.appendChild(tiles);
+  const ul = el('ul', null, 'history');
+  for (const r of list.slice(0, 20)) {
+    const li = el('li');
+    const q = r.qa ? ` · QA ${r.qa.fail ? `${r.qa.fail} failed` : r.qa.warn ? `${r.qa.warn} to check` : 'all passed'}` : '';
+    li.textContent = `${new Date(r.at).toLocaleDateString()} · #${r.id} ${r.name} · SEO ${r.score}${r.ms ? ` · ${secs(r.ms)}` : ''}${r.keyword ? ` · “${r.keyword}”` : ''}${q}`;
+    ul.appendChild(li);
+  }
+  box.appendChild(ul);
 }
 
 async function resetWork() {
   for (const it of state.items) { setPreview(it, null); if (it.url?.startsWith("blob:")) URL.revokeObjectURL(it.url); }
-  Object.assign(state, { items: [], media: [], notes: '', sources: [], market: null, facts: '', product: null, warnings: [], dirty: false, saved: null, photoKey: '' });
+  Object.assign(state, { items: [], media: [], notes: '', sources: [], market: null, facts: '', product: null, warnings: [], dirty: false, saved: null, photoKey: '', stats: null });
   $('#hints').value = ''; $('#link').value = ''; $('#link-error').textContent = '';
   $('#restored').hidden = true;
   await clearKept();
@@ -766,7 +1187,7 @@ function persist(now) {
       hints: $('#hints').value,
       items: state.items.map((it) => (it.media ? { media: it.media } : { key: it.key, brandY: it.brandY ?? null })),
       media: state.media, notes: state.notes, sources: state.sources, market: state.market, facts: state.facts,
-      warnings: state.warnings, saved: state.saved, photoKey: state.photoKey, dirty: state.dirty,
+      warnings: state.warnings, saved: state.saved, photoKey: state.photoKey, dirty: state.dirty, stats: state.stats,
       product: state.product ? readForm() : null, reviewTime: $('#review-time').textContent,
     }));
   } catch { /* storage full or blocked: the page still works, it just is not kept */ }
@@ -792,7 +1213,7 @@ async function restore() {
   }).catch(() => {});
   Object.assign(state, {
     items, media: d.media || [], notes: d.notes || '', sources: d.sources || [], market: d.market || null, facts: d.facts || '',
-    warnings: d.warnings || [], saved: d.saved || null, photoKey: d.photoKey || '', dirty: !!d.dirty, product: d.product || null,
+    warnings: d.warnings || [], saved: d.saved || null, photoKey: d.photoKey || '', dirty: !!d.dirty, product: d.product || null, stats: d.stats || null,
   });
   $('#hints').value = d.hints || '';
   renderThumbs();

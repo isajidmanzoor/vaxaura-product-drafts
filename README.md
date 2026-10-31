@@ -9,12 +9,17 @@ desktops (review form with a sticky score card), in light and dark mode.
 
 ## What it does
 
-1. **Photos**: from the phone/computer (the browser shrinks each to max 1600 px JPEG) or by pasting
-   photo links (supplier site, Daraz, any public image; the server downloads them and refuses
-   internal addresses). They go to the WordPress Media Library; the first is the featured image.
+1. **Photos**: from the phone/computer, pasted with Ctrl+V, or from photo links (supplier site,
+   Daraz, any public image; the server downloads them and refuses internal addresses). The browser
+   adds the Vaxaura branding and saves every photo as WebP under 100 KB (largest size and quality
+   that fit, at most 1600 px). They go to the WordPress Media Library; the first is the featured image.
 2. **Research**: Gemini (`gemini-3.6-flash`) identifies the product from the photos and proposes
    search phrases; the server then reads what people in Pakistan type into Google (Google
    autocomplete, `gl=pk`) and the matching Daraz.pk listings (price, sold count, rating, link).
+   The Google searches are cleaned into **keyword candidates** (`lib/keywords.mjs`): real searches
+   for this kind of product, without "price/Pakistan/daraz", other brands or keywords another
+   Vaxaura product already targets. The focus keyword must be one of them. Categories are chosen
+   only when they fit; otherwise a new category is suggested (created when the draft is saved).
 3. **Listing** (`gemini-3.6-flash`, falls back to 3.8 / 3.5 Flash-Lite; JSON output): title, slug, short and long description with FAQ,
    categories, tags, suggested price, stock, weight/size, attributes, alt text per photo, Rank Math
    SEO title/description/focus keyword, and an owner note (what to confirm + competitor prices).
@@ -27,10 +32,21 @@ desktops (review form with a sticky score card), in light and dark mode.
    "price in pakistan" in the keyword or slug). SEO titles stay within 60 characters and keep the
    brand's spelling (ST, L'Oréal). If checks still fail, "Save anyway at SEO N/100" saves anyway.
    Possible duplicates of existing products are shown before you save.
+   **Keyword cannibalization**: the keywords are compared with every product in the shop; a clash
+   (the same search would show two Vaxaura pages) must be fixed, an overlap is shown as a warning.
+   "Fix with AI" rewrites the listing on the review page around the chosen keyword while keeping
+   prices, SKU, stock, categories, tags and the note.
 5. **Draft**: creates the product as a draft, puts 3 photos inside the description, writes the Rank
    Math fields, and checks every field (including that shoppers cannot see it).
+6. **QA & analytics** (`lib/qa.mjs`, read-only): right after saving, the draft is checked end to end
+   in the shop (status, content, categories, SKU, price, photo size/format/alt text, Rank Math score,
+   real-search keyword, cannibalization), with the run's timings and photo savings. The "QA &
+   analytics" screen checks any product by ID, grades the whole shop (average SEO, keyword clashes,
+   photos over 100 KB, SKUs to tidy, placeholder categories) and lists this device's runs.
 
-The SKU is always the next free number for the category (VAX-JP07, VAX-CF03, …), never invented.
+The SKU is always the next free number for the category (VAX-JP07, VAX-CW002, …), never invented; a
+new category gets the initials of its name (Hair Accessories → VAX-HA01). It follows the category on
+the review page until you type your own.
 
 Note: vaxaura.com's theme removes Rank Math's "Content AI used" test on products
 (filter `rank_math/researches/tests` in the vaxaura theme's `functions.php`). Without it the maximum is 95.
@@ -83,7 +99,9 @@ The dev server reads the same variables from the environment or from
 ## Files
 
 - `public/` – the page (no build step)
-- `api/*.js` – Vercel functions: `login`, `logout`, `me`, `context`, `upload`, `fetch-photo`, `research`, `write`, `audit`, `draft`
+- `api/*.js` – Vercel functions: `login`, `logout`, `me`, `context`, `upload`, `fetch-photo`, `research`, `write`, `audit`, `draft`, `qa`
 - `lib/woo.mjs` – WordPress/WooCommerce/Rank Math client, SEO audit, draft creation and checks
 - `lib/ai.mjs` – Gemini research, listing and SEO repair loop
+- `lib/keywords.mjs` – keyword candidates from Google searches, keyword cannibalization
+- `lib/qa.mjs` – QA of a product and the shop-wide report
 - `lib/http.mjs` – login cookie and route wrapper

@@ -16,7 +16,10 @@
 <body>
 <header class="bar">
   <div class="brand"><span class="logo" aria-hidden="true">V</span><span>Vaxaura <small>Product Drafts</small></span></div>
-  <button id="logout" class="link-btn" type="button" hidden>Sign out</button>
+  <div class="bar-actions">
+    <button id="open-qa" class="link-btn" type="button" hidden>QA &amp; analytics</button>
+    <button id="logout" class="link-btn" type="button" hidden>Sign out</button>
+  </div>
 </header>
 
 <nav id="stepper" class="stepper" aria-label="Progress" hidden>
@@ -58,7 +61,7 @@
       </div>
       <input type="file" id="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple class="visually-hidden">
       <input type="file" id="camera" accept="image/*" capture="environment" class="visually-hidden">
-      <p class="small muted">JPG, PNG or WebP. Large photos are resized and PNG is saved as smaller WebP.</p>
+      <p class="small muted">JPG, PNG or WebP. Every photo is saved as WebP under 100 KB.</p>
     </div>
 
     <form id="link-form" class="link-form" novalidate>
@@ -140,6 +143,12 @@
         <fieldset class="card">
           <legend>Categories &amp; tags</legend>
           <div id="cats" class="chips" role="group" aria-label="Categories"></div>
+          <button id="cats-refresh" type="button" class="link-btn small-btn">↻ Refresh categories from the shop</button>
+          <div class="grid2">
+            <div><label for="f-newcat">New category <span class="muted">(only if none above fits; created when saving)</span></label><input id="f-newcat" name="new_category" maxlength="40" placeholder="e.g. Watches"></div>
+            <div><label for="f-newcat-parent">Inside</label><select id="f-newcat-parent" name="new_category_parent"><option value="">Top level</option></select></div>
+          </div>
+          <p id="cat-hint" class="hint" hidden></p>
           <label for="f-tags">Tags <span class="muted">(comma separated)</span></label>
           <input id="f-tags" name="tags">
           <label for="f-attrs">Attributes <span class="muted">(one per line, e.g. Material: Alloy)</span></label>
@@ -150,6 +159,15 @@
           <legend>Search engine (Rank Math)</legend>
           <label for="f-kw">Focus keyword <span class="muted">(first is the focus keyword, others are secondary)</span></label>
           <input id="f-kw" name="focus_keyword" required>
+          <div id="kw-ideas" class="kw-ideas" hidden>
+            <p class="small muted">Real Google searches in Pakistan for this product (most searched first). Click one to make it the focus keyword:</p>
+            <div id="kw-chips" class="kw-chips"></div>
+          </div>
+          <div id="clash" class="clash" hidden>
+            <h3>Keyword cannibalization</h3>
+            <p class="small muted">Other Vaxaura products that compete for the same Google search:</p>
+            <ul id="clash-list"></ul>
+          </div>
           <label for="f-title">SEO title <span class="count" data-for="seo_title" data-max="60"></span></label>
           <input id="f-title" name="seo_title" required>
           <label for="f-meta">Meta description <span class="count" data-for="seo_description" data-min="120" data-max="160"></span></label>
@@ -185,6 +203,8 @@
         <div class="card sticky">
           <div class="score"><span id="score">–</span><small>/100 Rank Math</small></div>
           <ul id="tests" class="checks"></ul>
+          <button id="fix-ai" type="button" class="secondary wide" hidden>Fix with AI</button>
+          <p id="fix-status" class="small muted center" role="status"></p>
           <p id="form-errors" class="error" role="alert"></p>
           <button id="save" type="button" class="primary wide">Save as draft</button>
           <button id="save-anyway" type="button" class="secondary wide" hidden></button>
@@ -211,7 +231,33 @@
     </div>
     <ul id="done-warnings" class="banner warn list"></ul>
     <details id="done-details"><summary id="done-summary">Checks</summary><ul id="done-checks" class="checks"></ul></details>
+    <section class="qa-box" aria-labelledby="qa-h">
+      <div class="qa-head"><h2 id="qa-h">QA report</h2><button id="qa-again" type="button" class="link-btn">Run again</button></div>
+      <p id="qa-status" class="small muted" role="status"></p>
+      <div id="qa-result"></div>
+      <h2>This run</h2>
+      <dl id="run-stats" class="stats"></dl>
+    </section>
     <p class="small muted">Review the draft in WordPress and click <strong>Publish</strong> when it is ready. Publishing also starts the social media video for this product.</p>
+  </section>
+
+  <!-- QA & analytics -->
+  <section id="qa" class="card narrow-wide" hidden>
+    <button id="qa-back" type="button" class="link-btn back-btn">← Back</button>
+    <h1 tabindex="-1">QA &amp; analytics</h1>
+    <p class="muted small">Checks are read-only: nothing in the shop is changed.</p>
+    <form id="qa-form" class="inline qa-form">
+      <label for="qa-id" class="visually-hidden">Product ID</label>
+      <input id="qa-id" inputmode="numeric" autocomplete="off" placeholder="Product ID, e.g. 536">
+      <button type="submit" class="secondary">Check product</button>
+    </form>
+    <p id="qa-one-status" class="small muted" role="status"></p>
+    <div id="qa-one"></div>
+    <div class="qa-head"><h2>Whole shop</h2><button id="qa-store-run" type="button" class="secondary">Run shop report</button></div>
+    <p id="qa-store-status" class="small muted" role="status"></p>
+    <div id="qa-store"></div>
+    <h2>This tool’s runs</h2>
+    <div id="qa-history"></div>
   </section>
 </main>
 <script src="app.js" type="module"></script>

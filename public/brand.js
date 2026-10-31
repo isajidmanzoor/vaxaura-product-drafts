@@ -108,9 +108,16 @@ let ready = null;
 // Loads the logo (same origin, so the canvas can still be exported) and the two fonts.
 export function brandAssets() {
   ready ||= (async () => {
-    const logo = new Image();
-    logo.src = '/brand/vaxaura-logo.webp';
-    await logo.decode();
+    // fetch + createImageBitmap rather than <img>.decode(), which can stay pending for good (a
+    // tab in the background) and would then hold up every photo. A failed load is retried later.
+    let logo;
+    try {
+      const res = await fetch('/brand/vaxaura-logo.webp', { signal: AbortSignal.timeout(15000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      logo = await createImageBitmap(await res.blob());
+    } catch {
+      throw new Error('The Vaxaura logo could not be loaded for the branding. Check the connection and try again.');
+    }
     // Fonts are a nicety: after 3 s the fallbacks (Times / Arial) are used instead.
     await Promise.race([
       Promise.all([document.fonts.load(SERIF(40)), document.fonts.load(SANS(40))]),

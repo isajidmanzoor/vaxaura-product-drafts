@@ -51,14 +51,14 @@
 
     <div class="drop" id="drop">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-4 4m4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <p class="only-fine"><strong>Drag photos here</strong> or</p>
+      <p class="only-fine"><strong>Drag or paste (Ctrl+V) photos here</strong> or</p>
       <div class="drop-actions">
         <label class="btn secondary" for="file">Choose photos</label>
         <label class="btn secondary only-touch" for="camera">Take a photo</label>
       </div>
       <input type="file" id="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple class="visually-hidden">
       <input type="file" id="camera" accept="image/*" capture="environment" class="visually-hidden">
-      <p class="small muted">JPG, PNG or WebP. Large photos are resized automatically.</p>
+      <p class="small muted">JPG, PNG or WebP. Large photos are resized and PNG is saved as smaller WebP.</p>
     </div>
 
     <form id="link-form" class="link-form" novalidate>

@@ -114,7 +114,7 @@ async function makePreview(it) {
     if (!brandOn) { setPreview(it, null); return; }
     const { canvas, cy } = await renderPhoto(it.file, 640, it.brandY ?? it.autoY ?? null);
     if (it.brandY == null) it.autoY = cy;
-    const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
+    const { blob } = await encode(canvas, wantsWebp(it.file), 0.85);
     if (ticket !== it.ticket || !state.items.includes(it)) return; // superseded or removed meanwhile
     setPreview(it, URL.createObjectURL(blob));
   } catch (err) {
@@ -218,6 +218,33 @@ const drop = $('#drop');
 ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', (e) => addFiles(e.dataTransfer.files));
 
+// Ctrl+V / ⌘V on the Photos screen adds copied photos (screenshots, "Copy image" in a browser).
+// A copied photo link is added like the link box; text pasted into a field stays normal typing.
+document.addEventListener('paste', (e) => {
+  if (view !== 'photos' || !e.clipboardData) return;
+  const stamp = Date.now();
+  const pics = [...e.clipboardData.items]
+    .filter((i) => i.kind === 'file' && i.type.startsWith('image/'))
+    .map((i) => i.getAsFile()).filter(Boolean)
+    // Clipboard images are all called "image.png": give each its own name.
+    .map((f, k) => new File([f], `pasted-photo-${stamp}${k ? `-${k + 1}` : ''}${EXT[f.type] || '.png'}`, { type: f.type, lastModified: stamp }));
+  if (pics.length) {
+    e.preventDefault();
+    addFiles(pics);
+    drop.classList.add('over');
+    setTimeout(() => drop.classList.remove('over'), 500);
+    return;
+  }
+  const t = e.target;
+  if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+  const text = e.clipboardData.getData('text/plain').trim();
+  if (!/^https?:\/\/\S+(\s+https?:\/\/\S+)*$/i.test(text) || $('#link-add').disabled) return;
+  e.preventDefault();
+  const input = $('#link');
+  input.value = [input.value.trim(), text].filter(Boolean).join(' ');
+  $('#link-form').requestSubmit();
+});
+
 // With branding on, the server only fetches the photo and hands it back, so it is branded here
 // like a photo from the device; with branding off it goes straight into the Media Library.
 async function fetchLinkPhoto(url) {
@@ -263,7 +290,7 @@ $('#link-form').addEventListener('submit', async (e) => {
   $('#link-error').textContent = failed.map((f) => `${f.url.length > 60 ? f.url.slice(0, 57) + '…' : f.url}: ${f.msg}`).join('\n');
 });
 
-// Shrinks a photo to at most 1600 px (JPEG) so each upload stays well below Vercel's 4.5 MB body limit.
+// Shrinks a photo to at most 1600 px so each upload stays well below Vercel's 4.5 MB body limit.
 async function decode(file) {
   try { return await createImageBitmap(file); } catch { /* e.g. HEIC in Chrome: try the <img> decoder (Safari) */ }
   const url = URL.createObjectURL(file);
@@ -276,14 +303,38 @@ async function decode(file) {
     throw new Error(`"${file.name}" could not be opened by this browser. If it is an iPhone HEIC photo, share it as JPG (or set Camera → Formats → Most Compatible) and try again.`);
   } finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
 }
-// The branding uses the same spot as the preview (the stored or moved height).
+// The branding uses the same spot as the preview (the stored or moved height). PNG and WebP
+// photos are saved as WebP (much smaller than PNG, see-through parts stay see-through); JPG stays JPG.
 async function shrink(it) {
   const { canvas } = await renderPhoto(it.file, 1600, it.brandY ?? it.autoY ?? null);
-  const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.88));
+  const { blob, mime } = await encode(canvas, wantsWebp(it.file), 0.88);
   const buf = new Uint8Array(await blob.arrayBuffer());
   let bin = '';
   for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-  return btoa(bin);
+  return { data: btoa(bin), mime };
+}
+const EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
+function wantsWebp(file) {
+  return /^image\/(png|webp)$/.test(file.type) || (!file.type && /\.(png|webp)$/i.test(file.name));
+}
+// Browsers that cannot write WebP (older Safari) hand back a PNG instead: those get a JPG, with
+// see-through parts on white rather than black.
+async function encode(canvas, webp, quality) {
+  if (webp) {
+    const blob = await new Promise((r) => canvas.toBlob(r, 'image/webp', quality));
+    if (blob?.type === 'image/webp') return { blob, mime: 'image/webp' };
+  }
+  let src = canvas;
+  if (webp) {
+    src = document.createElement('canvas');
+    src.width = canvas.width; src.height = canvas.height;
+    const ctx = src.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, src.width, src.height);
+    ctx.drawImage(canvas, 0, 0);
+  }
+  const blob = await new Promise((r) => src.toBlob(r, 'image/jpeg', quality));
+  if (!blob) throw new Error('This browser could not prepare the photo. Please try again or use another browser.');
+  return { blob, mime: 'image/jpeg' };
 }
 
 // ---------- 2. research + writing ----------
@@ -317,7 +368,7 @@ async function run() {
     const todo = state.items.filter((it) => !it.media);
     for (const [k, it] of todo.entries()) {
       s = step(`Uploading photo ${k + 1} of ${todo.length}`);
-      it.media = await call('upload', { name: it.file.name, mime: 'image/jpeg', data: await shrink(it) });
+      it.media = await call('upload', { name: it.file.name, ...(await shrink(it)) });
       // From now on the thumbnail is the uploaded (branded) photo itself.
       const original = it.url;
       if (it.media.thumb) it.url = it.media.thumb;

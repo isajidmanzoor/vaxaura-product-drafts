@@ -85,3 +85,11 @@ test('only a secondary keyword clashes: it is dropped, URL and titles stay', () 
   assert.deepEqual(p.textChanges, { description: 0, short_description: 0 });
   assert.ok(!p.conflicts.some((c) => c.severity === 'high'));
 });
+
+test('a secondary keyword shared with another product’s secondary stays', () => {
+  const p510 = product({ id: 510, slug: 'white-enamel-pendant-vaxaura', meta_data: [{ key: 'rank_math_focus_keyword', value: 'white enamel pendant, pearl pendant necklace, gold pearl necklace' },
+    { key: 'rank_math_title', value: 'White Enamel Pendant | Vaxaura' }, { key: 'rank_math_description', value: 'white enamel pendant' }] });
+  const p498 = { id: 498, name: 'Gold Pearl Necklace', slug: 'gold-pearl', status: 'publish', meta_data: [{ key: 'rank_math_focus_keyword', value: 'gold pearl necklace' }] };
+  const p514 = { id: 514, name: 'Mint Pearl Necklace', slug: 'mint', status: 'publish', meta_data: [{ key: 'rank_math_focus_keyword', value: 'mint green necklace, pearl pendant necklace' }] };
+  assert.equal(planFix(p510, [p510, p498, p514], { keyword: 'white enamel pendant' }).after.focus_keyword, 'white enamel pendant, pearl pendant necklace');
+});

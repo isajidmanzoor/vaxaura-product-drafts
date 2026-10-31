@@ -932,6 +932,7 @@ function renderQa(box, qa) {
   facts.textContent = [`SEO ${m.score}/100`, m.keyword ? `keyword “${m.keyword}”` : 'no focus keyword', `${m.words} words`,
     `${(m.photos || []).length} photos, ${m.totalKB ?? '?'} KB in total (${(m.photos || []).map((p) => `${p.kb ?? '?'} KB`).join(', ')})`].join(' · ');
   box.appendChild(facts);
+  if (qa.keyword) box.appendChild(keywordPanel(qa.keyword));
   const groups = [...new Set(qa.checks.map((c) => c.group))];
   for (const g of groups) {
     const list = qa.checks.filter((c) => c.group === g);
@@ -998,21 +999,184 @@ $('#open-qa').addEventListener('click', () => {
 });
 $('#qa-back').addEventListener('click', () => show(qaFrom === 'qa' ? 'photos' : qaFrom));
 
+// A product ID, a product link (vaxaura.com/product/…) or its slug; the server works out which product.
 $('#qa-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const id = $('#qa-id').value.trim().replace(/^#/, '');
-  if (!/^\d+$/.test(id)) { $('#qa-one-status').textContent = 'Enter the product ID (the number in the WordPress address, e.g. 536).'; return; }
+  const id = $('#qa-id').value.trim();
+  if (!id) { $('#qa-one-status').textContent = 'Paste a product link (vaxaura.com/product/…) or type its ID (e.g. 536).'; return; }
   const btn = e.submitter || $('#qa-form button');
   btn.disabled = true;
-  $('#qa-one-status').textContent = `Checking product #${id}…`;
+  $('#qa-one-status').textContent = 'Checking the product and its keywords on Google…';
   $('#qa-one').innerHTML = '';
   try {
     const qa = await call('qa', { id });
     renderQa($('#qa-one'), qa);
     $('#qa-one-status').textContent = '';
-  } catch (err) { $('#qa-one-status').textContent = err.status === 404 || /invalid id|404/i.test(err.message) ? `No product #${id} in the shop.` : err.message; }
+  } catch (err) { $('#qa-one-status').textContent = err.message; }
   finally { btn.disabled = false; }
 });
+
+// ---------- keyword & URL QA, cannibalization ----------
+const REDIRECT_NOTE = 'This product is live: if you change its URL, add a 301 redirect from the old URL to the new one (Rank Math → Redirections) so Google and shared links keep working.';
+function pills(sum) {
+  const p = el('p', null, 'qa-sum');
+  for (const [k, label] of [['pass', 'passed'], ['warn', 'to check'], ['fail', 'failed']]) p.append(el('span', `${sum[k]} ${label}`, `pill ${k}`), ' ');
+  return p;
+}
+function checkList(list) {
+  const ul = el('ul', null, 'qa-checks');
+  for (const c of [...list].sort((a, b) => ['fail', 'warn', 'pass'].indexOf(a.status) - ['fail', 'warn', 'pass'].indexOf(b.status))) {
+    const li = el('li', null, c.status);
+    const i = el('span', QA_ICON[c.status], 'qa-icon');
+    i.setAttribute('aria-label', c.status);
+    li.append(i, ` ${c.label}${c.info ? ` — ${c.info}` : ''}`);
+    ul.appendChild(li);
+  }
+  return ul;
+}
+
+// The keyword & URL panel of a product QA.
+function keywordPanel(k) {
+  const box = el('section', null, 'kwqa');
+  box.appendChild(el('h3', 'Keyword & URL QA'));
+  const u = el('p', null, 'kwqa-url');
+  u.append(link(k.url, k.url.replace(/^https?:\/\//, '')));
+  box.appendChild(u);
+  const kw = el('p', null, 'small');
+  kw.append(el('strong', 'Focus: '), el('span', k.focus || 'none', 'kw-tag' + (k.focus ? '' : ' bad')));
+  if (k.secondary.length) { kw.append(' ', el('strong', 'Secondary: ')); for (const x of k.secondary) kw.append(el('span', x, 'kw-tag'), ' '); }
+  box.appendChild(kw);
+  box.appendChild(pills(k.summary));
+  for (const g of ['URL', 'Keyword', 'Placement', 'Cannibalization']) {
+    const list = k.checks.filter((c) => c.group === g);
+    if (!list.length) continue;
+    const bad = list.filter((c) => c.status !== 'pass').length;
+    const d = el('details', null, 'qa-group');
+    d.open = bad > 0;
+    d.append(el('summary', `${g} — ${bad ? `${bad} to look at` : 'all good'}`), checkList(list));
+    box.appendChild(d);
+  }
+  if (k.suggestions.length) {
+    box.appendChild(el('p', 'Real Google searches for this product that no other Vaxaura product uses (most searched first):', 'small muted'));
+    const chips = el('div', null, 'kw-chips');
+    for (const x of k.suggestions) {
+      const c = el('span', x.kw, 'kw-chip static' + (x.kw === k.focus ? ' on' : ''));
+      c.title = `Suggested by Google ${x.hits} time${x.hits > 1 ? 's' : ''}`;
+      chips.appendChild(c);
+    }
+    box.appendChild(chips);
+  }
+  const better = k.suggestions.find((x) => x.kw !== k.focus);
+  if (k.suggestedSlug && k.suggestedSlug !== k.slug && better) {
+    const p = el('p', null, 'hint');
+    p.append('Better: focus keyword ', el('strong', `“${better.kw}”`), ' and URL ', el('code', `/product/${k.suggestedSlug}/`), '.');
+    if (k.live) p.append(' ', REDIRECT_NOTE);
+    box.appendChild(p);
+  }
+  return box;
+}
+
+$('#cannibal-run').addEventListener('click', async () => {
+  const btn = $('#cannibal-run');
+  btn.disabled = true;
+  $('#cannibal-status').textContent = 'Comparing the keywords of every product and asking Google for free alternatives… (up to a minute)';
+  $('#cannibal').innerHTML = '';
+  try {
+    renderCannibal(await call('qa', { cannibal: true }));
+    $('#cannibal-status').textContent = '';
+  } catch (err) { $('#cannibal-status').textContent = err.message; }
+  finally { btn.disabled = false; }
+});
+
+function renderCannibal(r) {
+  const box = $('#cannibal');
+  box.innerHTML = '';
+  const t = r.totals;
+  const tiles = el('div', null, 'tiles');
+  for (const [v, k, bad] of [[t.high, 'clashes to fix', t.high > 0], [t.medium, 'overlaps to check', false], [t.involved, `of ${t.products} products involved`, false], [t.noKeyword, 'products without a focus keyword', t.noKeyword > 0]]) {
+    const d = el('div', null, 'tile' + (bad ? ' bad' : ''));
+    d.append(el('strong', String(v)), el('span', k));
+    tiles.appendChild(d);
+  }
+  box.appendChild(tiles);
+  box.appendChild(el('p', `Checked ${new Date(r.at).toLocaleString()}. Nothing in the shop was changed.`, 'small muted'));
+  if (!r.groups.length) { box.appendChild(el('p', '✓ No keyword cannibalization: every product targets its own searches.', 'ok-line')); return; }
+  for (const g of r.groups) {
+    const card = el('div', null, `clash-group ${g.severity}`);
+    const h = el('h3');
+    h.append(el('span', g.severity === 'high' ? 'Must fix' : 'Check', `sev ${g.severity}`), ` “${g.keyword}” — ${g.members.length} products`);
+    card.appendChild(h);
+    const ul = el('ul', null, 'clash-members');
+    for (const m of g.members) {
+      const li = el('li');
+      li.append(m.url ? link(m.url, `#${m.id} ${m.name}`) : `#${m.id} ${m.name}`, el('small', ` · ${STATUS[m.status] || m.status} · SEO ${m.score} · ${m.keywords.join(', ') || 'no keyword'}`));
+      li.append(' ', el('span', m.id === g.keep ? 'keeps the keyword' : 'change', m.id === g.keep ? 'pill pass' : 'pill warn'));
+      ul.appendChild(li);
+    }
+    card.appendChild(ul);
+    for (const l of g.links) card.appendChild(el('p', `#${l.a} ↔ #${l.b}: ${l.reason}`, 'small muted'));
+    for (const f of g.fixes) {
+      const p = el('p', null, 'hint');
+      if (f.to) {
+        p.append(`Fix #${f.id}: change the focus keyword from “${f.from || 'none'}” to `, el('strong', `“${f.to}”`), ' and the URL to ', el('code', `/product/${f.slug}/`), '.');
+        if (f.alternatives.length > 1) p.append(` Other free searches: ${f.alternatives.slice(1).join(', ')}.`);
+        if (f.live) p.append(' ', REDIRECT_NOTE);
+      } else p.append(`#${f.id}: Google offered no free search for this product; choose a more specific focus keyword (colour, shape, brand) by hand.`);
+      card.appendChild(p);
+    }
+    box.appendChild(card);
+  }
+}
+
+const VERDICT = {
+  free: ['pass', 'Free to use: a real Google search and no other Vaxaura product targets it.'],
+  overlap: ['warn', 'Usable, but it overlaps with another product’s keyword (see below).'],
+  unsearched: ['warn', 'No other product uses it, but nobody searches this exact phrase on Google. Pick a real search below.'],
+  shape: ['fail', 'Not a good focus keyword: use 2–4 words naming the product, without price, Pakistan, buy, online or best.'],
+  taken: ['fail', 'Taken: another Vaxaura product already targets it. Using it would be keyword cannibalization.'],
+};
+let kwcSeq = 0;
+async function checkKw(value) {
+  const kw = String(value || '').trim();
+  if (!kw) { $('#kwc-status').textContent = 'Type a keyword, e.g. couple watches.'; return; }
+  const seq = ++kwcSeq;
+  $('#kwc-input').value = kw;
+  $('#kwc-status').textContent = `Checking “${kw}”…`;
+  $('#kwc-result').innerHTML = '';
+  try {
+    const r = await call('qa', { keyword: kw });
+    if (seq !== kwcSeq) return;
+    $('#kwc-status').textContent = '';
+    const box = $('#kwc-result');
+    const [status, text] = VERDICT[r.verdict];
+    const p = el('p', null, `kwc-verdict ${status}`);
+    p.append(el('span', QA_ICON[status], 'qa-icon'), ` “${r.keyword}”: ${text}`);
+    box.appendChild(p);
+    if (r.searched != null) box.appendChild(el('p', r.searched ? '✓ People search this on Google in Pakistan.' : '✗ Google suggests no search that starts with it.', 'small'));
+    if (r.conflicts.length) {
+      const ul = el('ul', null, 'qa-checks');
+      for (const c of r.conflicts) {
+        const st = c.severity === 'high' ? 'fail' : 'warn';
+        const li = el('li', null, st);
+        li.append(el('span', QA_ICON[st], 'qa-icon'), ' ', c.url ? link(c.url, `#${c.id} ${c.name}`) : `#${c.id} ${c.name}`, ` — ${c.reason}`);
+        ul.appendChild(li);
+      }
+      box.appendChild(ul);
+    }
+    if (r.related.length) {
+      box.appendChild(el('p', 'Related real searches no product uses yet (click to check):', 'small muted'));
+      const chips = el('div', null, 'kw-chips');
+      for (const x of r.related) {
+        const b = el('button', x.kw, 'kw-chip');
+        b.type = 'button';
+        b.addEventListener('click', () => checkKw(x.kw));
+        chips.appendChild(b);
+      }
+      box.appendChild(chips);
+    }
+  } catch (err) { if (seq === kwcSeq) $('#kwc-status').textContent = err.message; }
+}
+$('#kwc-form').addEventListener('submit', (e) => { e.preventDefault(); checkKw($('#kwc-input').value); });
 
 $('#qa-store-run').addEventListener('click', async () => {
   const btn = $('#qa-store-run');

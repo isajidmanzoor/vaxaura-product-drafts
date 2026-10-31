@@ -43,6 +43,16 @@ desktops (review form with a sticky score card), in light and dark mode.
    real-search keyword, cannibalization), with the run's timings and photo savings. The "QA &
    analytics" screen checks any product by ID, grades the whole shop (average SEO, keyword clashes,
    photos over 100 KB, SKUs to tidy, placeholder categories) and lists this device's runs.
+   - **Keyword & URL QA** (`lib/keyword-qa.mjs`), part of every product check (paste the product link,
+     e.g. vaxaura.com/product/couple-watches-black-metal-vaxaura/, or its ID): is the focus keyword a real
+     Google search (Google's echo of an unsearched phrase does not count), is it in the URL, SEO title,
+     meta description, first sentences and main photo alt, is the URL clean (no repeated words or
+     product codes), does another product target it; plus free real-search keywords and a better URL
+     (with a 301-redirect reminder for live products).
+   - **Keyword cannibalization** section: every group of products competing for the same search,
+     which one keeps the keyword (live first, then SEO score, then the older one) and a different free
+     real-search keyword and URL for each of the others; and a checker that says whether a keyword
+     is free before it is used.
 
 The SKU is always the next free number for the category (VAX-JP07, VAX-CW002, …), never invented; a
 new category gets the initials of its name (Hair Accessories → VAX-HA01). It follows the category on
@@ -104,4 +114,5 @@ The dev server reads the same variables from the environment or from
 - `lib/ai.mjs` – Gemini research, listing and SEO repair loop
 - `lib/keywords.mjs` – keyword candidates from Google searches, keyword cannibalization
 - `lib/qa.mjs` – QA of a product and the shop-wide report
+- `lib/keyword-qa.mjs` – keyword & URL QA, cannibalization groups and fixes, keyword checker
 - `lib/http.mjs` – login cookie and route wrapper

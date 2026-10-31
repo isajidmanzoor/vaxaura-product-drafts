@@ -17,7 +17,7 @@
 <header class="bar">
   <div class="brand"><span class="logo" aria-hidden="true">V</span><span>Vaxaura <small>Product Drafts</small></span></div>
   <div class="bar-actions">
-    <button id="open-qa" class="link-btn" type="button" hidden>QA &amp; analytics</button>
+    <button id="open-qa" class="link-btn" type="button" aria-label="QA &amp; analytics" hidden><span class="long">QA &amp; analytics</span><span class="short" aria-hidden="true">QA</span></button>
     <button id="logout" class="link-btn" type="button" hidden>Sign out</button>
   </div>
 </header>
@@ -246,13 +246,29 @@
     <button id="qa-back" type="button" class="link-btn back-btn">← Back</button>
     <h1 tabindex="-1">QA &amp; analytics</h1>
     <p class="muted small">Checks are read-only: nothing in the shop is changed.</p>
+    <h2>Check a product</h2>
     <form id="qa-form" class="inline qa-form">
-      <label for="qa-id" class="visually-hidden">Product ID</label>
-      <input id="qa-id" inputmode="numeric" autocomplete="off" placeholder="Product ID, e.g. 536">
-      <button type="submit" class="secondary">Check product</button>
+      <label for="qa-id" class="visually-hidden">Product link or ID</label>
+      <input id="qa-id" autocomplete="off" spellcheck="false" placeholder="Product link or ID, e.g. vaxaura.com/product/… or 536">
+      <button type="submit" class="secondary">Check</button>
     </form>
+    <p class="small muted">Includes the keyword &amp; URL QA: is the keyword really searched, is it in the URL, title and text, does another product compete for it, and better keywords from Google.</p>
     <p id="qa-one-status" class="small muted" role="status"></p>
     <div id="qa-one"></div>
+
+    <section class="cannibal-box" aria-labelledby="cannibal-h">
+      <div class="qa-head"><h2 id="cannibal-h">Keyword cannibalization</h2><button id="cannibal-run" type="button" class="secondary">Find all clashes</button></div>
+      <p class="small muted">Two Vaxaura pages for the same Google search split their ranking. This finds every group of products competing for a search, which one should keep it, and a free real-search keyword for the others.</p>
+      <form id="kwc-form" class="inline qa-form">
+        <label for="kwc-input" class="visually-hidden">Keyword to check</label>
+        <input id="kwc-input" autocomplete="off" spellcheck="false" placeholder="Check a keyword before using it, e.g. couple watches">
+        <button type="submit" class="secondary">Check keyword</button>
+      </form>
+      <p id="kwc-status" class="small muted" role="status"></p>
+      <div id="kwc-result"></div>
+      <p id="cannibal-status" class="small muted" role="status"></p>
+      <div id="cannibal"></div>
+    </section>
     <div class="qa-head"><h2>Whole shop</h2><button id="qa-store-run" type="button" class="secondary">Run shop report</button></div>
     <p id="qa-store-status" class="small muted" role="status"></p>
     <div id="qa-store"></div>

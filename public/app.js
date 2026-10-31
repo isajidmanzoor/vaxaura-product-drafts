@@ -1188,7 +1188,37 @@ $('#kwc-form').addEventListener('submit', (e) => { e.preventDefault(); checkKw($
 
 // ---------- keyword fix for a product already in the shop ----------
 // Preview (nothing changes) -> the owner may edit the new values -> Apply (after a confirm) -> Undo.
-const fixState = { id: null, keyword: '', plan: null, edits: {}, busy: false };
+const fixState = { id: null, keyword: '', plan: null, edits: {}, busy: false, armed: null };
+// Saving asks for a second click on the same button instead of a browser confirm() box: some
+// browsers (in-app browsers, "prevent this page from creating dialogs") answer confirm() with
+// "Cancel" without showing it, so Apply looked dead.
+// What the fix really changes, in words (only the fields that differ).
+function fixChanges(p) {
+  const b = p.before, a = p.after, out = [];
+  if (b.focus_keyword !== a.focus_keyword) {
+    const was = b.focus_keyword.split(',').map((k) => k.trim()).filter(Boolean), now = a.focus_keyword.split(',').map((k) => k.trim()).filter(Boolean);
+    const gone = was.filter((k) => !now.includes(k)), added = now.filter((k) => !was.includes(k));
+    if (was[0] !== now[0]) out.push(`focus keyword “${was[0] || 'none'}” → “${now[0]}”`);
+    const sg = gone.filter((k) => k !== was[0]), sa = added.filter((k) => k !== now[0]);
+    if (sg.length) out.push(`remove keyword${sg.length > 1 ? 's' : ''} ${sg.map((k) => `“${k}”`).join(', ')}`);
+    if (sa.length) out.push(`add keyword${sa.length > 1 ? 's' : ''} ${sa.map((k) => `“${k}”`).join(', ')}`);
+  }
+  if (b.title !== a.title) out.push('SEO title');
+  if (b.meta !== a.meta) out.push('meta description');
+  if (b.slug !== a.slug) out.push(`URL → /product/${a.slug}/`);
+  if (b.alt !== a.alt) out.push('main photo alt text');
+  const n = p.textChanges.description + p.textChanges.short_description;
+  if (n) out.push(`“${p.from}” → “${p.keyword}” ${n} time${n > 1 ? 's' : ''} in the descriptions`);
+  if (!out.length || (out.length && !(b.title !== a.title || b.meta !== a.meta || b.slug !== a.slug || b.alt !== a.alt || n))) out.push('nothing else changes');
+  return out;
+}
+
+function disarm() {
+  fixState.armed = null;
+  $('#fix-apply').textContent = 'Apply to the shop';
+  $('#fix-undo').textContent = 'Undo';
+  $('#fix-apply').classList.remove('danger'); $('#fix-undo').classList.remove('danger');
+}
 const FIX_FIELDS = [['title', 'SEO title', 60], ['meta', 'Meta description', 160], ['slug', 'URL slug', 75], ['alt', 'Main photo alt text', 125], ['secondary', 'Secondary keywords (comma separated)', 0]];
 
 function fixButton(id, keyword, label = 'Preview fix') {
@@ -1200,6 +1230,7 @@ function fixButton(id, keyword, label = 'Preview fix') {
 
 async function openFix(id, keyword) {
   Object.assign(fixState, { id, keyword, plan: null, edits: {} });
+  disarm();
   $('#fix-what').textContent = `Product #${id} · new focus keyword “${keyword}”`;
   $('#fix-body').innerHTML = '';
   $('#fix-msg').textContent = 'Preparing the preview… (nothing is changed yet)';
@@ -1221,6 +1252,7 @@ function fixEdits() {
 async function previewFixNow(edits = {}) {
   if (fixState.busy) return;
   fixState.busy = true;
+  disarm();
   $('#fix-apply').disabled = true; $('#fix-recheck').disabled = true;
   try {
     const plan = await call('fix', { action: 'preview', id: fixState.id, keyword: fixState.keyword, edits });
@@ -1271,7 +1303,8 @@ function renderFixPlan(p) {
 }
 
 $('#fix-recheck').addEventListener('click', () => previewFixNow({ ...fixState.edits, ...fixEdits() }));
-$('#fix-close').addEventListener('click', () => $('#fix-dialog').close());
+$('#fix-close').addEventListener('click', () => { disarm(); $('#fix-dialog').close(); });
+$('#fix-body').addEventListener('input', () => { if (fixState.armed) { disarm(); $('#fix-msg').textContent = 'Changed: click Apply to see the updated preview.'; } });
 $('#fix-apply').addEventListener('click', async () => {
   const p = fixState.plan;
   if (!p || fixState.busy) return;
@@ -1283,8 +1316,16 @@ $('#fix-apply').addEventListener('click', async () => {
     $('#fix-msg').textContent = 'Preview updated with your changes. Check it and click Apply again.';
     return;
   }
-  const where = p.live ? `This changes the LIVE product #${p.id} on vaxaura.com` : `This changes draft #${p.id}`;
-  if (!confirm(`${where}: focus keyword “${p.keyword}”, SEO title, meta description, URL and main photo alt, and “${p.from}” in the descriptions. The current values are kept for Undo. Apply?`)) return;
+  if (fixState.armed !== 'apply') {
+    const where = p.live ? `This changes the LIVE product #${p.id} on vaxaura.com` : `This changes draft #${p.id}`;
+    fixState.armed = 'apply';
+    $('#fix-apply').textContent = p.live ? `Yes, change live product #${p.id}` : `Yes, change draft #${p.id}`;
+    $('#fix-apply').classList.add('danger');
+    $('#fix-msg').textContent = `${where}: ${fixChanges(p).join('; ')}. The current values are kept for Undo. Click the button again to confirm, or Close to cancel.`;
+    $('#fix-msg').scrollIntoView({ block: 'nearest' });
+    return;
+  }
+  disarm();
   fixState.busy = true;
   $('#fix-apply').disabled = true; $('#fix-recheck').disabled = true;
   $('#fix-msg').textContent = 'Saving and checking…';
@@ -1295,7 +1336,15 @@ $('#fix-apply').addEventListener('click', async () => {
   finally { fixState.busy = false; $('#fix-recheck').disabled = false; }
 });
 $('#fix-undo').addEventListener('click', async () => {
-  if (fixState.busy || !confirm(`Put back product #${fixState.id}’s keyword, SEO title, meta, URL, alt text and descriptions as they were before the fix?`)) return;
+  if (fixState.busy) return;
+  if (fixState.armed !== 'undo') {
+    fixState.armed = 'undo';
+    $('#fix-undo').textContent = 'Yes, restore the earlier version';
+    $('#fix-undo').classList.add('danger');
+    $('#fix-msg').textContent = `This puts back product #${fixState.id}’s keyword, SEO title, meta, URL, alt text and descriptions as they were before the fix. Click again to confirm.`;
+    return;
+  }
+  disarm();
   fixState.busy = true;
   $('#fix-undo').disabled = true;
   $('#fix-msg').textContent = 'Restoring…';

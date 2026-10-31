@@ -126,7 +126,7 @@ The dev server reads the same variables from the environment or from
 ## Files
 
 - `public/` – the page (no build step)
-- `api/*.js` – Vercel functions: `login`, `logout`, `me`, `context`, `upload`, `fetch-photo`, `research`, `write`, `audit`, `draft`, `qa`, `fix`, `maintain`
+- `api/*.js` – Vercel functions: `login`, `logout`, `me`, `context`, `upload`, `fetch-photo`, `research`, `write`, `audit`, `draft`, `qa`, `fix` (keyword, photo and SKU fixes)
 - `lib/woo.mjs` – WordPress/WooCommerce/Rank Math client, SEO audit, draft creation and checks
 - `lib/ai.mjs` – Gemini research, listing and SEO repair loop
 - `lib/keywords.mjs` – keyword candidates from Google searches, keyword cannibalization

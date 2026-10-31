@@ -1712,7 +1712,7 @@ async function openPhotoFix(id) {
   openMaint('Fix photos');
   try {
     mt.kind = 'photos';
-    mt.plan = await call('maintain', { action: 'photos-plan', id });
+    mt.plan = await call('fix', { action: 'photos-plan', id });
     renderPhotoPlan();
   } catch (err) { mtMsg(err.message); }
 }
@@ -1785,7 +1785,7 @@ async function applyPhotosNow() {
       replace.push({ oldId, newId: media.id });
     }
     mtMsg('Replacing the photos in the product…');
-    const r = await call('maintain', { action: 'photos-apply', id: p.id, replace, modified: p.modified });
+    const r = await call('fix', { action: 'photos-apply', id: p.id, replace, modified: p.modified });
     showMaintResult(r, 'Photos replaced.', () => openPhotoFix(p.id));
   } catch (err) { mtMsg(err.message); mt.busy = false; renderPhotoPlanSafe(); }
 }
@@ -1793,7 +1793,7 @@ async function undoPhotosNow() {
   mt.busy = true;
   mtButtons([]);
   mtMsg('Restoring the earlier photos…');
-  try { showMaintResult(await call('maintain', { action: 'photos-undo', id: mt.plan.id }), 'Earlier photos restored.', () => openPhotoFix(mt.plan.id)); }
+  try { showMaintResult(await call('fix', { action: 'photos-undo', id: mt.plan.id }), 'Earlier photos restored.', () => openPhotoFix(mt.plan.id)); }
   catch (err) { mtMsg(err.message); mt.busy = false; renderPhotoPlanSafe(); }
 }
 function renderPhotoPlanSafe() { if (mt.plan) renderPhotoPlan(); }
@@ -1814,7 +1814,7 @@ async function openSkuFix() {
   openMaint('Fix SKUs');
   try {
     mt.kind = 'sku';
-    mt.plan = await call('maintain', { action: 'sku-plan' });
+    mt.plan = await call('fix', { action: 'sku-plan' });
     renderSkuPlan();
   } catch (err) { mtMsg(err.message); }
 }
@@ -1845,7 +1845,7 @@ function renderSkuPlan() {
         u.addEventListener('click', async () => {
           if (u.dataset.armed !== '1') { u.dataset.armed = '1'; u.textContent = `Yes, put back “${it.current || 'none'}”`; u.classList.add('danger'); return; }
           u.disabled = true;
-          try { const r = await call('maintain', { action: 'sku-undo', id: it.id }); res.status = r.status; res.info = `restored “${r.sku || 'none'}”`; res.canUndo = r.canUndo; res.sku = r.sku; }
+          try { const r = await call('fix', { action: 'sku-undo', id: it.id }); res.status = r.status; res.info = `restored “${r.sku || 'none'}”`; res.canUndo = r.canUndo; res.sku = r.sku; }
           catch (err) { res.status = 'fail'; res.info = err.message; }
           renderSkuPlan();
         });
@@ -1871,7 +1871,7 @@ async function applySkusNow() {
   mtButtons([]);
   mtMsg('Saving the SKUs…');
   try {
-    const r = await call('maintain', { action: 'sku-apply', items });
+    const r = await call('fix', { action: 'sku-apply', items });
     mt.skuResults = [...(mt.skuResults || []).filter((x) => !sel.includes(x.id)), ...r.results];
     const bad = r.results.filter((x) => x.status !== 'pass').length;
     mt.busy = false;

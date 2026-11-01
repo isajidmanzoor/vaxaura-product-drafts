@@ -861,7 +861,7 @@ $('#form').addEventListener('input', (e) => {
   if (e.target.name === 'new_category') syncCatHint();
   if (e.target.name === 'focus_keyword') renderKeywordIdeas();
   clearTimeout(timer);
-  timer = setTimeout(refreshAudit, 450);
+  timer = setTimeout(refreshAudit, 1200); // after a pause in typing: fewer server calls
 });
 $('#form').addEventListener('change', (e) => { if (e.target.type === 'checkbox') { state.dirty = true; syncCatHint(); persist(); clearTimeout(timer); refreshAudit(); } });
 $('#form').addEventListener('submit', (e) => e.preventDefault());

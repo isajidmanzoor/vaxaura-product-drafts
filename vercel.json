@@ -1,8 +1,41 @@
 {
   "outputDirectory": "public",
   "functions": {
-    "api/*.js": {
+    "api/research.js": {
       "maxDuration": 300
+    },
+    "api/write.js": {
+      "maxDuration": 300
+    },
+    "api/qa.js": {
+      "maxDuration": 120
+    },
+    "api/fix.js": {
+      "maxDuration": 120
+    },
+    "api/draft.js": {
+      "maxDuration": 120
+    },
+    "api/audit.js": {
+      "maxDuration": 30
+    },
+    "api/context.js": {
+      "maxDuration": 30
+    },
+    "api/fetch-photo.js": {
+      "maxDuration": 60
+    },
+    "api/upload.js": {
+      "maxDuration": 60
+    },
+    "api/login.js": {
+      "maxDuration": 10
+    },
+    "api/logout.js": {
+      "maxDuration": 10
+    },
+    "api/me.js": {
+      "maxDuration": 10
     }
   },
   "headers": [

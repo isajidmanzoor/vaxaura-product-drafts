@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseNaheed } from '../lib/ai.mjs';
+import { parseNaheed, naheedPlan } from '../lib/ai.mjs';
 
 // Shape of naheed.pk/searchautocomplete/ajax/suggest/?q=loreal%20foundation as answered on 2026-11-01.
 const SAMPLE = {
@@ -36,4 +36,12 @@ test('Naheed.pk search feed: products with prices, ratings and clean links', () 
   assert.equal(items[1].rating, null);
   assert.deepEqual(parseNaheed({ totalItems: 0, indexes: [] }), []);
   assert.deepEqual(parseNaheed(null), []);
+});
+
+test('Naheed gets the most specific query and the two broadest', () => {
+  const plan = ['stanley quencher h2.0 tumbler mint green', 'stanley water bottle tumbler mint green', 'stanley quencher tumbler', 'stanley mint green tumbler', 'stanley tumbler'];
+  assert.deepEqual(naheedPlan(plan), ['stanley quencher h2.0 tumbler mint green', 'stanley tumbler', 'stanley mint green tumbler']);
+  assert.deepEqual(naheedPlan(['face wash']), ['face wash']);
+  assert.deepEqual(naheedPlan(['a b', 'c d']), ['a b', 'c d']);
+  assert.deepEqual(naheedPlan([]), []);
 });

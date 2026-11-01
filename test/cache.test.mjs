@@ -29,3 +29,16 @@ test('shop lists are remembered for a minute and forgotten after any write', asy
   assert.equal(calls, 4); // older than a minute: asked again
   assert.equal(a.length, 1);
 });
+
+test('a 429 from the shop is waited out and retried, also for writes', async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++;
+    return calls < 3 ? new Response('{"code":"too_many"}', { status: 429, headers: { 'retry-after': '0' } }) : new Response('{"id":7}');
+  });
+  const { data } = await api('POST', '/wc/v3/products', { body: { name: 'x' } });
+  assert.equal(data.id, 7);
+  assert.equal(calls, 3);
+  calls = -10; // always 429: gives up after 4 tries with the status
+  await assert.rejects(api('GET', '/wc/v3/products/1'), /HTTP 429/);
+});

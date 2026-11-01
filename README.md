@@ -141,7 +141,7 @@ and `wrangler.jsonc` is the configuration (with the same security headers).
 2. After the first deploy: the Worker → **Settings → Variables and Secrets** → add the four secrets
    (type **Secret**): `ADMIN_PASSWORD` (at least 10 characters), `GEMINI_API_KEY`, `VAXAURA_WP_USER`,
    `VAXAURA_WP_APP_PASSWORD`. Until they are set, every API call answers "The tool is not set up yet".
-3. The tool runs at `https://vaxaura-product-drafts.<account>.workers.dev`; every push to `main` deploys.
+3. The tool runs at `https://drafts.vaxaura.workers.dev`; every push to `main` deploys.
 
 Free plan limits: 100,000 requests a day, 10 ms of server CPU per request (waiting for the AI,
 WordPress, Google or Daraz does not count) and 50 outside requests per request (research fetches at

@@ -3,7 +3,7 @@
 // VAXAURA_WP_APP_PASSWORD) are typed in the dashboard (Settings -> Variables and Secrets), never here.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "vaxaura-product-drafts",
+  "name": "drafts",
   "main": "worker.mjs",
   "compatibility_date": "2025-09-01",
   "compatibility_flags": ["nodejs_compat"],

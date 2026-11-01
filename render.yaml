@@ -1,0 +1,25 @@
+# Render Blueprint: Dashboard -> New -> Blueprint -> pick this repository.
+# The secrets (sync: false) are typed in Render's dashboard by the owner; they are never in the repo.
+services:
+  - type: web
+    name: vaxaura-product-drafts
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm install --omit=dev
+    startCommand: node server.mjs
+    healthCheckPath: /api/me
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: VAXAURA_SITE
+        value: https://vaxaura.com
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: VAXAURA_WP_USER
+        sync: false
+      - key: VAXAURA_WP_APP_PASSWORD
+        sync: false

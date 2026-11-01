@@ -118,11 +118,24 @@ photos there (Media → filter "Unattached").
 Changing `ADMIN_PASSWORD` or the WordPress application password logs everyone out.
 To stop the app at once: revoke the application password in wp-admin.
 
+## Hosting on Render
+
+The tool also runs as one Node server (`node server.mjs`, `lib/server.mjs`), e.g. on Render's
+free plan, with the same security headers as on Vercel. `render.yaml` describes the service.
+
+1. render.com → sign up with GitHub → **New → Blueprint** → choose this repository.
+2. Fill in the four secrets: `ADMIN_PASSWORD` (at least 10 characters), `GEMINI_API_KEY`,
+   `VAXAURA_WP_USER`, `VAXAURA_WP_APP_PASSWORD`. The server does not start without them.
+3. **Apply**. The tool runs at `https://<service-name>.onrender.com`; every push to `main` deploys.
+
+The free plan sleeps after 15 minutes without visits; the first page then takes about a minute.
+A call may run up to 5.5 minutes (research and writing wait on the AI).
+
 ## Local
 
 ```bash
 npm test                  # SEO audit tests (no network)
-node cli/dev-server.mjs   # http://localhost:3000, login password: vaxaura-local
+node cli/dev-server.mjs   # http://localhost:3000 (this computer only), login password: vaxaura-local
 ```
 
 The dev server reads the same variables from the environment or from

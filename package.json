@@ -3,8 +3,11 @@
   "private": true,
   "type": "module",
   "description": "Product photos -> AI research + SEO listing -> WooCommerce DRAFT on vaxaura.com",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
+    "start": "node server.mjs",
     "dev": "node cli/dev-server.mjs",
     "test": "node --test test/*.test.mjs"
   }

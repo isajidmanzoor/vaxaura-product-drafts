@@ -131,6 +131,22 @@ free plan, with the same security headers as on Vercel. `render.yaml` describes 
 The free plan sleeps after 15 minutes without visits; the first page then takes about a minute.
 A call may run up to 5.5 minutes (research and writing wait on the AI).
 
+## Hosting on Cloudflare Workers
+
+Free, no card. `worker.mjs` runs the same `api/*.js` routes, `public/` is served as static assets,
+and `wrangler.jsonc` is the configuration (with the same security headers).
+
+1. dash.cloudflare.com → sign up → **Workers & Pages → Create → Import a repository** → GitHub →
+   `isajidmanzoor/vaxaura-product-drafts`. Keep the defaults (deploy command `npx wrangler deploy`).
+2. After the first deploy: the Worker → **Settings → Variables and Secrets** → add the four secrets
+   (type **Secret**): `ADMIN_PASSWORD` (at least 10 characters), `GEMINI_API_KEY`, `VAXAURA_WP_USER`,
+   `VAXAURA_WP_APP_PASSWORD`. Until they are set, every API call answers "The tool is not set up yet".
+3. The tool runs at `https://vaxaura-product-drafts.<account>.workers.dev`; every push to `main` deploys.
+
+Free plan limits: 100,000 requests a day, 10 ms of server CPU per request (waiting for the AI,
+WordPress, Google or Daraz does not count) and 50 outside requests per request (research fetches at
+most 10 Daraz thumbnails for that reason). There is no time limit while the browser waits.
+
 ## Local
 
 ```bash
@@ -152,4 +168,6 @@ The dev server reads the same variables from the environment or from
 - `lib/keyword-qa.mjs` – keyword & URL QA, cannibalization groups and fixes, keyword checker
 - `lib/fix.mjs` – keyword fix for products already in the shop: preview, apply, undo
 - `lib/maintenance.mjs` – photo and SKU fixes for products already in the shop
-- `lib/http.mjs` – login cookie and route wrapper
+- `lib/http.mjs` – login cookie, route wrapper, security headers, required settings
+- `lib/server.mjs`, `server.mjs` – the tool as one Node server (Render, this computer)
+- `worker.mjs`, `wrangler.jsonc` – the tool on Cloudflare Workers

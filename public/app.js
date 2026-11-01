@@ -58,7 +58,7 @@ async function start() {
   const missing = Object.entries(me.setup).filter(([, v]) => !v).map(([k]) => k);
   $('#setup').hidden = !missing.length;
   $('#setup').textContent = missing.length
-    ? `Setup incomplete: ${missing.join(', ')} ${missing.length > 1 ? 'are' : 'is'} not set in Vercel (Project → Settings → Environment Variables), then redeploy.`
+    ? `Setup incomplete: ${missing.join(', ')} ${missing.length > 1 ? 'are' : 'is'} not set. On Cloudflare: the Worker → Settings → Variables and Secrets → Add, type Secret (plain variables are wiped by the next deploy).`
     : '';
   if (!me.loggedIn) return show('login');
   $('#logout').hidden = false; $('#open-qa').hidden = false;
@@ -685,33 +685,60 @@ function renderClashes(conflicts = []) {
 
 // Market evidence: how the price was suggested and which Daraz / Naheed listings it rests on.
 const rs = (n) => `Rs ${Number(n).toLocaleString('en-PK')}`;
+// Each listing is a card that opens that exact product page (Daraz: the listed variant) in a new tab.
+function offerCard(it, cls) {
+  const store = it.store || 'Daraz';
+  const a = el('a', null, 'offer');
+  a.href = it.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+  a.title = `${it.name} — open on ${store}`;
+  if (it.thumb) {
+    const img = el('img');
+    img.src = it.thumb; img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; img.width = 64; img.height = 64;
+    img.addEventListener('error', () => img.replaceWith(el('span', store[0], 'offer-noimg')));
+    a.append(img);
+  } else a.append(el('span', store[0], 'offer-noimg'));
+  const body = el('div', null, 'offer-body');
+  const tags = el('div', null, 'offer-tags');
+  tags.append(el('span', store, `store store-${store.toLowerCase()}`), el('span', cls === 'exact' ? 'Same product' : 'Similar', `match ${cls}`));
+  if (it.ad) tags.append(el('span', 'Ad', 'store'));
+  const price = el('div', rs(it.price), 'offer-price');
+  if (it.original && it.original > it.price) price.append(' ', el('s', rs(it.original), ''));
+  const meta = [it.reviews ? `${it.reviews} reviews` : '', it.rating ? `${it.rating}★` : '', it.by === 'ai' ? 'checked against your photo' : 'matched by title'].filter(Boolean).join(' · ');
+  body.append(tags, el('div', it.name, 'offer-name'), price, el('div', meta, 'meta'), el('span', `Open on ${store} ↗`, 'offer-open'));
+  a.append(body);
+  return a;
+}
+
 function renderMarket(m) {
   const box = $('#market');
   box.innerHTML = '';
-  const add = (tag, text, cls) => { const el = document.createElement(tag); el.textContent = text; if (cls) el.className = cls; box.appendChild(el); return el; };
+  const add = (tag, text, cls) => box.appendChild(el(tag, text, cls));
   if (!m) { add('p', 'No market data for this listing.', 'muted'); $('#price-evidence').textContent = ''; return; }
   const p = m.pricing || {};
   if (p.sale) add('p', `Suggested: ${rs(p.regular)} → ${rs(p.sale)}`, 'price-line');
-  const why = add('ul', '', 'why');
-  for (const w of p.why || []) { const li = document.createElement('li'); li.textContent = w; why.appendChild(li); }
+  const why = add('ul', null, 'why');
+  for (const w of p.why || []) why.append(el('li', w, ''));
   const per = m.stores ? ` (Daraz ${m.stores.Daraz}, Naheed ${m.stores.Naheed})` : '';
   add('p', `${m.total} listings checked${per}${m.aiChecked ? ', the closest ones compared with your photo by AI' : ''}: ${m.exact.length} same product, ${m.similar.length} similar.`, 'small muted');
+  if (!m.exact.length && !m.similar.length) add('p', 'No listing of this product was found on Daraz or Naheed. Use the searches below to look yourself.', 'small');
   for (const [label, list, cls] of [['Same product', m.exact, 'exact'], ['Similar', m.similar, 'similar']]) {
     if (!list.length) continue;
-    add('h3', label);
-    const ul = add('ul', '', 'sources');
-    for (const it of list.slice(0, 6)) {
-      const li = document.createElement('li');
-      const badge = document.createElement('span');
-      badge.className = `match ${cls}`; badge.textContent = rs(it.price);
-      const a = document.createElement('a');
-      a.href = it.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
-      a.textContent = it.name.length > 80 ? it.name.slice(0, 77) + '…' : it.name;
-      const meta = document.createElement('span');
-      meta.className = 'meta';
-      meta.textContent = [it.store || 'Daraz', it.original && it.original > it.price ? `was ${rs(it.original)}` : '', it.reviews ? `${it.reviews} reviews` : '', it.rating ? `${it.rating}★` : ''].filter(Boolean).join(' · ');
-      li.append(badge, ' ', a, ' ', meta);
-      ul.appendChild(li);
+    add('h3', `${label} (${list.length})`);
+    const grid = add('div', null, 'offers');
+    // The first 4 show; the rest wait behind a button so the form stays close on a phone.
+    list.forEach((it, i) => { const card = offerCard(it, cls); card.hidden = i >= 4; grid.append(card); });
+    if (list.length > 4) {
+      const more = add('button', `Show all ${list.length}`, 'link-btn small-btn');
+      more.type = 'button';
+      more.addEventListener('click', () => { for (const c of grid.children) c.hidden = false; more.remove(); });
+    }
+  }
+  if (m.searches?.length) {
+    const s = add('p', 'Search more: ', 'searches small');
+    for (const q of m.searches) {
+      const a = el('a', `${q.store}: “${q.q}” (${q.found}) ↗`, '');
+      a.href = q.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      s.append(a);
     }
   }
   const ex = p.exact, si = p.similar;

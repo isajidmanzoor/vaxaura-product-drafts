@@ -115,6 +115,12 @@
     <p id="saved-banner" class="banner info" hidden></p>
     <ul id="review-warnings" class="banner warn list"></ul>
 
+    <section class="card market-box" id="research-box" aria-labelledby="market-h">
+      <h2 id="market-h">Market evidence</h2>
+      <div id="market"></div>
+      <details><summary>Full research notes</summary><pre id="notes" class="notes"></pre></details>
+    </section>
+
     <div class="review-grid">
       <form id="form" novalidate>
         <fieldset class="card">
@@ -127,7 +133,7 @@
             <div><label for="f-regular">Regular price (Rs)</label><input id="f-regular" name="regular_price" inputmode="numeric" required></div>
             <div><label for="f-sale">Sale price (Rs)</label><input id="f-sale" name="sale_price" inputmode="numeric"></div>
           </div>
-          <p class="hint"><strong>Suggested prices.</strong> <span id="price-evidence"></span> See “Market evidence” for the listings and reasons.</p>
+          <p class="hint"><strong>Suggested prices.</strong> <span id="price-evidence"></span> The listings and reasons are in <a href="#research-box">Market evidence</a> above.</p>
           <div class="grid2">
             <div><label for="f-sku">SKU</label><input id="f-sku" name="sku" required></div>
             <div><label for="f-stock">Stock quantity</label><input id="f-stock" name="stock_quantity" inputmode="numeric"></div>
@@ -210,11 +216,6 @@
           <button id="save-anyway" type="button" class="secondary wide" hidden></button>
           <p class="small muted center">Saved as a draft. Nothing is published.</p>
         </div>
-        <section class="card" id="research-box">
-          <h2>Market evidence</h2>
-          <div id="market"></div>
-          <details><summary>Full research notes</summary><pre id="notes" class="notes"></pre></details>
-        </section>
       </aside>
     </div>
   </section>

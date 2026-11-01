@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseNaheed, naheedPlan } from '../lib/ai.mjs';
+import { parseNaheed, naheedPlan, parseDaraz, searchLinks } from '../lib/ai.mjs';
 
 // Shape of naheed.pk/searchautocomplete/ajax/suggest/?q=loreal%20foundation as answered on 2026-11-01.
 const SAMPLE = {
@@ -44,4 +44,25 @@ test('Naheed gets the most specific query and the two broadest', () => {
   assert.deepEqual(naheedPlan(['face wash']), ['face wash']);
   assert.deepEqual(naheedPlan(['a b', 'c d']), ['a b', 'c d']);
   assert.deepEqual(naheedPlan([]), []);
+});
+
+test('Daraz listings link to the exact variant that was priced, only on daraz.pk', () => {
+  const items = parseDaraz({ mods: { listItems: [
+    { itemId: '1958312692', skuId: '14019169992', itemUrl: '//www.daraz.pk/products/100-279695-i1958312692.html?search=1', name: 'Loreal Glycolic Bright Cleanser', price: '954', adFlag: '0', image: '//img.drz.lazcdn.com/a.jpg' },
+    { itemId: '2', skuId: '3', itemUrl: '//www.daraz.pk/products/x-i2-s3.html', name: 'Already a variant link', price: '100', adFlag: '1' },
+    { itemId: '4', itemUrl: '//ads.example.com/click?x', name: 'Ad elsewhere', price: '100' },
+  ] } });
+  assert.equal(items.length, 2);
+  assert.equal(items[0].url, 'https://www.daraz.pk/products/100-279695-i1958312692-s14019169992.html');
+  assert.equal(items[0].sponsored, false);
+  assert.equal(items[0].image, 'https://img.drz.lazcdn.com/a.jpg');
+  assert.equal(items[1].url, 'https://www.daraz.pk/products/x-i2-s3.html');
+  assert.equal(items[1].sponsored, true);
+});
+
+test('search links open the same searches on Daraz and Naheed', () => {
+  assert.deepEqual(searchLinks([{ q: 'loreal face wash', found: 40 }], [{ q: "l'oreal cleanser", found: 3 }]), [
+    { store: 'Daraz', q: 'loreal face wash', found: 40, url: 'https://www.daraz.pk/catalog/?q=loreal%20face%20wash' },
+    { store: 'Naheed', q: "l'oreal cleanser", found: 3, url: "https://www.naheed.pk/catalogsearch/result/?q=l'oreal%20cleanser" },
+  ]);
 });

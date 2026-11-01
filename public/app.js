@@ -451,7 +451,7 @@ async function run() {
     Object.assign(state, { notes: r.notes, sources: r.sources, market: r.market, facts: r.facts });
     const ex = r.market?.exact.length || 0, si = r.market?.similar.length || 0;
     const cat = r.market?.categories?.length ? '' : r.market?.newCategory ? ` · new category: ${r.market.newCategory}` : '';
-    s.done(`Identified: ${r.identification?.product || 'product'}${r.identification?.brand ? ` (${r.identification.brand})` : ''} · Daraz: ${ex} same, ${si} similar of ${r.market?.total ?? 0} · ${r.market?.keywords?.length || 0} real search keywords${cat}`);
+    s.done(`Identified: ${r.identification?.product || 'product'}${r.identification?.brand ? ` (${r.identification.brand})` : ''} · Daraz + Naheed: ${ex} same, ${si} similar of ${r.market?.total ?? 0} · ${r.market?.keywords?.length || 0} real search keywords${cat}`);
 
     s = step('Writing the SEO listing');
     t0 = Date.now();
@@ -683,7 +683,7 @@ function renderClashes(conflicts = []) {
   }
 }
 
-// Market evidence: how the price was suggested and which Daraz listings it rests on.
+// Market evidence: how the price was suggested and which Daraz / Naheed listings it rests on.
 const rs = (n) => `Rs ${Number(n).toLocaleString('en-PK')}`;
 function renderMarket(m) {
   const box = $('#market');
@@ -694,7 +694,8 @@ function renderMarket(m) {
   if (p.sale) add('p', `Suggested: ${rs(p.regular)} → ${rs(p.sale)}`, 'price-line');
   const why = add('ul', '', 'why');
   for (const w of p.why || []) { const li = document.createElement('li'); li.textContent = w; why.appendChild(li); }
-  add('p', `${m.total} Daraz listings checked${m.aiChecked ? ', the closest ones compared with your photo by AI' : ''}: ${m.exact.length} same product, ${m.similar.length} similar.`, 'small muted');
+  const per = m.stores ? ` (Daraz ${m.stores.Daraz}, Naheed ${m.stores.Naheed})` : '';
+  add('p', `${m.total} listings checked${per}${m.aiChecked ? ', the closest ones compared with your photo by AI' : ''}: ${m.exact.length} same product, ${m.similar.length} similar.`, 'small muted');
   for (const [label, list, cls] of [['Same product', m.exact, 'exact'], ['Similar', m.similar, 'similar']]) {
     if (!list.length) continue;
     add('h3', label);
@@ -708,7 +709,7 @@ function renderMarket(m) {
       a.textContent = it.name.length > 80 ? it.name.slice(0, 77) + '…' : it.name;
       const meta = document.createElement('span');
       meta.className = 'meta';
-      meta.textContent = [it.original && it.original > it.price ? `was ${rs(it.original)}` : '', it.reviews ? `${it.reviews} reviews` : '', it.rating ? `${it.rating}★` : ''].filter(Boolean).join(' · ');
+      meta.textContent = [it.store || 'Daraz', it.original && it.original > it.price ? `was ${rs(it.original)}` : '', it.reviews ? `${it.reviews} reviews` : '', it.rating ? `${it.rating}★` : ''].filter(Boolean).join(' · ');
       li.append(badge, ' ', a, ' ', meta);
       ul.appendChild(li);
     }

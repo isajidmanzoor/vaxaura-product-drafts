@@ -20,9 +20,10 @@ desktops (review form with a sticky score card), in light and dark mode.
    the Media Library unused and their IDs are listed after the run.
 2. **Research**: Gemini (`gemini-3.6-flash`) identifies the product from the photos and proposes
    search phrases; the server then reads what people in Pakistan type into Google (Google
-   autocomplete, `gl=pk`) and the matching Daraz.pk listings (price, sold count, rating, link).
+   autocomplete, `gl=pk`) and the matching Daraz.pk and Naheed.pk listings (price, reviews, rating,
+   link; Naheed through its search box's own feed, 8 products per query, strong for cosmetics and brands).
    The Google searches are cleaned into **keyword candidates** (`lib/keywords.mjs`): real searches
-   for this kind of product, without "price/Pakistan/daraz", other brands or keywords another
+   for this kind of product, without "price/Pakistan/daraz/naheed", other brands or keywords another
    Vaxaura product already targets. The focus keyword must be one of them. Categories are chosen
    only when they fit; otherwise a new category is suggested (created when the draft is saved).
 3. **Listing** (`gemini-3.6-flash`, falls back to 3.8 / 3.5 Flash-Lite; JSON output): title, slug, short and long description with FAQ,
@@ -87,7 +88,7 @@ Note: vaxaura.com's theme removes Rank Math's "Content AI used" test on products
 
 Free. Gemini API free tier (aistudio.google.com key, no card). Checked 2026-10-30: `gemini-2.5-*` is
 closed to new keys and Google Search grounding has no free quota on the 3.x models, which is why the
-research uses Google autocomplete + Daraz search instead. On the free tier Google may use the prompts
+research uses Google autocomplete + Daraz and Naheed search instead. On the free tier Google may use the prompts
 and photos to improve its products. Vercel Hobby is free.
 
 The free tier is sometimes busy (503) or slow: a listing usually takes 1-2 minutes, sometimes 4. Each
@@ -144,8 +145,8 @@ and `wrangler.jsonc` is the configuration (with the same security headers).
 3. The tool runs at `https://drafts.vaxaura.workers.dev`; every push to `main` deploys.
 
 Free plan limits: 100,000 requests a day, 10 ms of server CPU per request (waiting for the AI,
-WordPress, Google or Daraz does not count) and 50 outside requests per request (research fetches at
-most 10 Daraz thumbnails for that reason). There is no time limit while the browser waits.
+WordPress, Google, Daraz or Naheed does not count) and 50 outside requests per request (research fetches at
+most 10 store thumbnails and 3 Naheed searches for that reason). There is no time limit while the browser waits.
 
 ## Local
 

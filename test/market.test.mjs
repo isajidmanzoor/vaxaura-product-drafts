@@ -87,6 +87,15 @@ test('a key term that only repeats the type is not used in searches', () => {
   assert.ok(q.includes('eminent face wash'), q.join(' | '));
 });
 
+test('the broadest search survives when the AI adds its own queries', () => {
+  // Live research on 2026-11-01: these 6 found nothing on Daraz; "eminent face wash" finds 40.
+  const q = queryPlan({ brand: 'EMINENT', product_type: 'face wash', key_terms: ['citrus glow', 'vitamin c', 'hydrates & glows'] },
+    ['eminent citrus glow face wash', 'eminent vitamin c face wash 150ml']);
+  assert.equal(q.length, 6);
+  assert.equal(q[0], 'eminent citrus glow face wash');
+  assert.equal(q.at(-1), 'eminent face wash');
+});
+
 test('reasons read well for a single listing', () => {
   const a = suggestPrice({ similar: [{ price: 1000 }], shop: [{ sale_price: '1199' }, { sale_price: '1199' }], hints: {} });
   assert.match(a.why[0], /1 listing, Rs 1000\./);

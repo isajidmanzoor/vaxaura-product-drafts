@@ -10,5 +10,8 @@
     "start": "node server.mjs",
     "dev": "node cli/dev-server.mjs",
     "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.5.0"
   }
 }

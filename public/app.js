@@ -769,8 +769,12 @@ function readForm() {
 
 // Character counters, Google preview and description preview.
 function updateLive() {
-  document.querySelectorAll('.count').forEach((c) => {
-    const len = F(c.dataset.for).value.trim().length;
+  // Only the review form's counters: the fix dialog has its own .count spans (no data-for) that linger
+  // in the DOM after it closes, and F(undefined).value used to throw here and freeze the live score.
+  $('#form').querySelectorAll('.count').forEach((c) => {
+    const field = F(c.dataset.for);
+    if (!field) return;
+    const len = field.value.trim().length;
     const min = Number(c.dataset.min || 0), max = Number(c.dataset.max);
     c.textContent = `${len}/${max}`;
     c.classList.toggle('over', len > max || (min && len < min));
@@ -1729,17 +1733,20 @@ function mtButtons(list) {
   close.addEventListener('click', () => { if (!mt.busy) $('#maint-dialog').close(); });
   box.appendChild(close);
 }
-// First click arms ("Yes, …"), second click runs.
+// First click arms ("Yes, …"), second click runs. mt.armed holds the armed button itself, so a second
+// click on a DIFFERENT button (Apply vs Undo) only arms that one - it never runs the first button's
+// action by mistake. Arming a button disarms the previously armed one.
 function armButton(btn, label, warning, run) {
-  if (!mt.armed) {
-    mt.armed = true;
-    btn.textContent = label; btn.classList.add('danger');
-    mtMsg(warning + ' Click the button again to confirm, or Close to cancel.');
-    $('#maint-msg').scrollIntoView({ block: 'nearest' });
-    return;
+  if (mt.armed === btn) { mt.armed = false; run(); return; }
+  if (mt.armed && mt.armed.dataset.label0 != null) {
+    mt.armed.textContent = mt.armed.dataset.label0;
+    mt.armed.classList.remove('danger');
   }
-  mt.armed = false;
-  run();
+  btn.dataset.label0 = btn.textContent;
+  mt.armed = btn;
+  btn.textContent = label; btn.classList.add('danger');
+  mtMsg(warning + ' Click the button again to confirm, or Close to cancel.');
+  $('#maint-msg').scrollIntoView({ block: 'nearest' });
 }
 function openMaint(title) {
   Object.assign(mt, { busy: false, armed: false, plan: null, prepared: new Map(), skuResults: null, brand: false });

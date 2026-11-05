@@ -180,6 +180,6 @@ test('QA grading of a product', () => {
   assert.equal(by['SKU unique'].status, 'pass');
   assert.equal(by['Keyword clash with #536 Leopard Couple Watches Black Metal – Watch Set'].status, 'fail');
   assert.equal(by['In a category'].status, 'pass');
-  assert.equal(by['Long description 350+ words'].status, 'pass');
+  assert.equal(by['Long description 200+ words'].status, 'pass');
   assert.equal(g.metrics.photos.length, 4);
 });

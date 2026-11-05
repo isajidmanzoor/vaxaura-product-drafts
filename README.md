@@ -38,7 +38,8 @@ desktops (review form with a sticky score card), in light and dark mode.
    (`lib/woo.mjs` → `seoAudit`, verified against Rank Math's own editor: `test/audit.test.mjs`).
    The AI rewrites until the score is 100/100. The score updates live while you edit.
    Four Vaxaura checks go beyond Rank Math (no points, but they trigger a rewrite): the long
-   description has 350+ words, the keyword density is at most 2.3% (Rank Math alone passed a
+   description has 200+ words (Rank Math's own bar - the copy is kept short, human and specific on
+   purpose, 220-320 words), the keyword density is at most 2.3% (Rank Math alone passed a
    243-word description at 2.47%), the focus keyword is 2-4 words naming the product (no
    "price in pakistan" in the keyword or slug), and the URL slug is not already another
    product's (the shop's slugs are compared live; a clash is made unique with "-vaxaura" or

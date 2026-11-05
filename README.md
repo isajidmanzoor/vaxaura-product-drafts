@@ -18,7 +18,7 @@ desktops (review form with a sticky score card), in light and dark mode.
    with fewer pixels and uploaded again (at most 3 tries). How much the shop enlarges photos is
    remembered on the device, so later photos usually need one upload. The too-large copies stay in
    the Media Library unused and their IDs are listed after the run.
-2. **Research**: Claude (`claude-haiku-5-5`) identifies the product from the photos and proposes
+2. **Research**: Gemini (`gemini-3.6-flash`) identifies the product from the photos and proposes
    search phrases; the server then reads what people in Pakistan type into Google (Google
    autocomplete, `gl=pk`) and the matching Daraz.pk and Naheed.pk listings (price, reviews, rating,
    link; Naheed through its search box's own feed, 8 products per query, strong for cosmetics and brands).
@@ -26,7 +26,7 @@ desktops (review form with a sticky score card), in light and dark mode.
    for this kind of product, without "price/Pakistan/daraz/naheed", other brands or keywords another
    Vaxaura product already targets. The focus keyword must be one of them. Categories are chosen
    only when they fit; otherwise a new category is suggested (created when the draft is saved).
-3. **Listing** (`claude-haiku-5-5`, JSON output): title, slug, short and long description with FAQ,
+3. **Listing** (`gemini-3.6-flash`, falls back to 3.8 / 3.5 Flash-Lite; JSON output): title, slug, short and long description with FAQ,
    categories, tags, suggested price, stock, weight/size, attributes, alt text per photo, Rank Math
    SEO title/description/focus keyword, and an owner note (what to confirm + competitor prices).
 4. **SEO check**: the same 16 tests Rank Math runs on a product, with the same points
@@ -86,22 +86,21 @@ Note: vaxaura.com's theme removes Rank Math's "Content AI used" test on products
 
 ## Cost
 
-The AI is paid by use: Claude Haiku 5.5 on the Anthropic API costs $0.10 per million input tokens and
-$0.50 per million output tokens (prompts up to 100K tokens), so a listing costs well under one US cent.
-The key comes from console.anthropic.com with prepaid credit (Settings → Billing). Research uses Google
-autocomplete + Daraz and Naheed search, which are free. Cloudflare Workers and Vercel Hobby are free.
+Free. Gemini API free tier (aistudio.google.com key, no card). Checked 2026-10-30: `gemini-2.5-*` is
+closed to new keys and Google Search grounding has no free quota on the 3.x models, which is why the
+research uses Google autocomplete + Daraz and Naheed search instead. On the free tier Google may use the prompts
+and photos to improve its products. Vercel Hobby is free.
 
-Each API request makes one AI call with a deadline under Vercel's 300 s limit; the Anthropic SDK
-retries a busy answer by itself, and SEO repair rounds run as separate requests. If the AI is busy
-or the credit is used up, the page shows the error with a retry button.
+The free tier is sometimes busy (503) or slow: a listing usually takes 1-2 minutes, sometimes 4. Each
+API request makes one AI call with a deadline under Vercel's 300 s limit, busy models are skipped, and
+SEO repair rounds run as separate requests. If Gemini is busy, the page shows a retry button.
 
 Photos are uploaded to the Media Library before the AI runs, so an abandoned run leaves unattached
 photos there (Media → filter "Unattached").
 
 ## Setup (once)
 
-1. **Anthropic key**: https://console.anthropic.com → Settings → Billing → add credit, then
-   Settings → API Keys → Create Key.
+1. **Gemini key**: https://aistudio.google.com/apikey → Create API key.
 2. **WordPress application password**: wp-admin → Users → Profile → Application Passwords →
    name "Vaxaura Product Drafts web" → Add New → copy it (shown once).
 3. **Vercel**: https://vercel.com/new → import `isajidmanzoor/vaxaura-product-drafts` (Framework:
@@ -110,7 +109,7 @@ photos there (Media → filter "Unattached").
    | Name | Value |
    |---|---|
    | `ADMIN_PASSWORD` | a long password you choose (login for this app) |
-   | `ANTHROPIC_API_KEY` | from step 1 |
+   | `GEMINI_API_KEY` | from step 1 |
    | `VAXAURA_WP_USER` | your wp-admin username |
    | `VAXAURA_WP_APP_PASSWORD` | from step 2 |
    | `VAXAURA_SITE` | optional, default `https://vaxaura.com` |
@@ -126,7 +125,7 @@ The tool also runs as one Node server (`node server.mjs`, `lib/server.mjs`), e.g
 free plan, with the same security headers as on Vercel. `render.yaml` describes the service.
 
 1. render.com → sign up with GitHub → **New → Blueprint** → choose this repository.
-2. Fill in the four secrets: `ADMIN_PASSWORD` (at least 10 characters), `ANTHROPIC_API_KEY`,
+2. Fill in the four secrets: `ADMIN_PASSWORD` (at least 10 characters), `GEMINI_API_KEY`,
    `VAXAURA_WP_USER`, `VAXAURA_WP_APP_PASSWORD`. The server does not start without them.
 3. **Apply**. The tool runs at `https://<service-name>.onrender.com`; every push to `main` deploys.
 
@@ -141,7 +140,7 @@ and `wrangler.jsonc` is the configuration (with the same security headers).
 1. dash.cloudflare.com → sign up → **Workers & Pages → Create → Import a repository** → GitHub →
    `isajidmanzoor/vaxaura-product-drafts`. Keep the defaults (deploy command `npx wrangler deploy`).
 2. After the first deploy: the Worker → **Settings → Variables and Secrets** → add the four secrets
-   (type **Secret**): `ADMIN_PASSWORD` (at least 10 characters), `ANTHROPIC_API_KEY`, `VAXAURA_WP_USER`,
+   (type **Secret**): `ADMIN_PASSWORD` (at least 10 characters), `GEMINI_API_KEY`, `VAXAURA_WP_USER`,
    `VAXAURA_WP_APP_PASSWORD`. Until they are set, every API call answers "The tool is not set up yet".
 3. The tool runs at `https://drafts.vaxaura.workers.dev`; every push to `main` deploys.
 
@@ -164,7 +163,7 @@ The dev server reads the same variables from the environment or from
 - `public/` – the page (no build step)
 - `api/*.js` – Vercel functions: `login`, `logout`, `me`, `context`, `upload`, `fetch-photo`, `research`, `write`, `audit`, `draft`, `qa`, `fix` (keyword, photo and SKU fixes)
 - `lib/woo.mjs` – WordPress/WooCommerce/Rank Math client, SEO audit, draft creation and checks
-- `lib/ai.mjs` – Claude research, listing and SEO repair loop
+- `lib/ai.mjs` – Gemini research, listing and SEO repair loop
 - `lib/keywords.mjs` – keyword candidates from Google searches, keyword cannibalization
 - `lib/qa.mjs` – QA of a product and the shop-wide report
 - `lib/keyword-qa.mjs` – keyword & URL QA, cannibalization groups and fixes, keyword checker

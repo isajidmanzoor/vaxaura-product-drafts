@@ -14,7 +14,7 @@ test('the Cloudflare Worker serves every API route', () => {
 test('the Cloudflare Worker: pages, headers, setup check, login, limits', async () => {
   const saved = { ...process.env };
   try {
-    for (const k of ['ADMIN_PASSWORD', 'ANTHROPIC_API_KEY', 'VAXAURA_WP_USER', 'VAXAURA_WP_APP_PASSWORD']) delete process.env[k];
+    for (const k of ['ADMIN_PASSWORD', 'GEMINI_API_KEY', 'VAXAURA_WP_USER', 'VAXAURA_WP_APP_PASSWORD']) delete process.env[k];
     const page = await call('/');
     assert.equal(page.status, 200);
     assert.equal(await page.text(), 'asset /');
@@ -25,12 +25,12 @@ test('the Cloudflare Worker: pages, headers, setup check, login, limits', async 
     // Without the secrets only /api/me answers.
     const me = await call('/api/me');
     assert.equal(me.status, 200);
-    assert.deepEqual((await me.json()).setup, { ADMIN_PASSWORD: false, ANTHROPIC_API_KEY: false, VAXAURA_WP_USER: false, VAXAURA_WP_APP_PASSWORD: false });
+    assert.deepEqual((await me.json()).setup, { ADMIN_PASSWORD: false, GEMINI_API_KEY: false, VAXAURA_WP_USER: false, VAXAURA_WP_APP_PASSWORD: false });
     const off = await call('/api/login', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } });
     assert.equal(off.status, 503);
     assert.match((await off.json()).error, /not set up yet: set ADMIN_PASSWORD/);
 
-    Object.assign(process.env, { ADMIN_PASSWORD: 'short', ANTHROPIC_API_KEY: 'x', VAXAURA_WP_USER: 'x', VAXAURA_WP_APP_PASSWORD: 'x' });
+    Object.assign(process.env, { ADMIN_PASSWORD: 'short', GEMINI_API_KEY: 'x', VAXAURA_WP_USER: 'x', VAXAURA_WP_APP_PASSWORD: 'x' });
     assert.match((await (await call('/api/context')).json()).error, /at least 10 characters/);
 
     process.env.ADMIN_PASSWORD = 'test-only-password-123';

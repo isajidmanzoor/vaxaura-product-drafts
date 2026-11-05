@@ -1,5 +1,5 @@
 // Cloudflare Workers (free plan): Workers & Pages -> Create -> Import a repository -> this repo.
-// Every push to main deploys. The 4 secrets (ADMIN_PASSWORD, ANTHROPIC_API_KEY, VAXAURA_WP_USER,
+// Every push to main deploys. The 4 secrets (ADMIN_PASSWORD, GEMINI_API_KEY, VAXAURA_WP_USER,
 // VAXAURA_WP_APP_PASSWORD) are typed in the dashboard (Settings -> Variables and Secrets), never here.
 {
   "$schema": "node_modules/wrangler/config-schema.json",

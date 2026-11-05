@@ -47,6 +47,17 @@ test('keyword pool is empty for unrelated suggestions', () => {
   assert.deepEqual(keywordPool(counts(['face wash for men', 'gold pendant']), WATCH), []);
 });
 
+test('keyword pool drops a joining word left at the edge of a search', () => {
+  const JHUMKA = { product: 'gold-tone jhumka earrings with black stones', product_type: 'jhumka earrings', key_terms: ['black stone'], details: 'gold tone, black stones' };
+  const pool = keywordPool(counts(['price of jhumka gold earrings', 'jhumka gold earrings', 'jhumka earrings for women', 'black stone jhumka with price']), JHUMKA);
+  const kws = pool.map((k) => k.kw);
+  assert.ok(kws.includes('jhumka gold earrings'), kws.join(' | '));
+  assert.equal(pool.find((k) => k.kw === 'jhumka gold earrings').hits, 2); // "of jhumka gold earrings" merged into it
+  assert.ok(kws.includes('black stone jhumka'));
+  assert.ok(kws.includes('jhumka earrings for women')); // a joining word in the middle stays
+  assert.ok(kws.every((k) => !/^(of|for|with) | (of|for|with)$/.test(k)), kws.join(' | '));
+});
+
 test('keyword report: free, overlapping and taken searches against the shop', () => {
   const shop = [
     { id: 536, name: 'Leopard Couple Watches', status: 'publish', url: 'https://vaxaura.com/product/couple-watches/', keywords: ['couple watches'] },

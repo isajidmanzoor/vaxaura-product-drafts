@@ -408,7 +408,8 @@ async function run() {
   if (state.product && !state.saved && state.dirty && !confirm('Write a new listing? The current listing and your edits will be replaced.')) return;
   running = true;
   show('progress');
-  $('#steps').innerHTML = ''; $('#progress-error').textContent = ''; $('#progress-actions').hidden = true; $('#research-live').hidden = true;
+  $('#steps').innerHTML = ''; $('#progress-error').textContent = ''; $('#progress-actions').hidden = true;
+  if ($('#research-live')) $('#research-live').hidden = true; // missing on a page cached before the research panel existed
   state.hints = $('#hints').value.trim();
   const started = Date.now();
   const stop = startTimer();
@@ -696,6 +697,7 @@ function renderKeywordReport(box, market, onPick) {
 // The research screen (step 2): what was identified, the keyword standing and the market evidence,
 // shown as soon as the research is back, while the listing is still being written.
 function renderResearchLive(r) {
+  if (!$('#research-live')) return; // an older cached page has no research panel; the review page shows the evidence
   const id = r.identification || {}, m = r.market;
   const box = $('#rl-ident');
   box.innerHTML = '';

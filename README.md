@@ -24,9 +24,14 @@ desktops (review form with a sticky score card), in light and dark mode.
    link; Naheed through its search box's own feed, 8 products per query, strong for cosmetics and brands).
    The Google searches are cleaned into **keyword candidates** (`lib/keywords.mjs`): real searches
    for this kind of product, without "price/Pakistan/daraz/naheed", other brands or keywords another
-   Vaxaura product already targets. The focus keyword must be one of them. Categories are chosen
-   only when they fit; otherwise a new category is suggested (created when the draft is saved).
-3. **Listing** (`gemini-3.6-flash`, falls back to 3.8 / 3.5 Flash-Lite; JSON output): title, slug, short and long description with FAQ,
+   Vaxaura product already targets. Each candidate is marked **free** or **overlap** (a shorter or
+   longer form is another product's focus keyword), and the searches **taken** by another product
+   are listed with that product. The research screen shows all of this - identification, keyword
+   standing and cannibalization, Daraz/Naheed listings and the price suggestion - as soon as the
+   research is back, while the listing is still being written; the review page shows it again.
+   The focus keyword must be one of the candidates (a free one unless nothing free fits). Categories
+   are chosen only when they fit; otherwise a new category is suggested (created when the draft is saved).
+3. **Listing** (`gemini-3.8-flash` first for better copy, falls back to 3.6 Flash / 3.5 Flash-Lite; JSON output): title, slug, short and long description with FAQ,
    categories, tags, suggested price, stock, weight/size, attributes, alt text per photo, Rank Math
    SEO title/description/focus keyword, and an owner note (what to confirm + competitor prices).
 4. **SEO check**: the same 16 tests Rank Math runs on a product, with the same points

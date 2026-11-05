@@ -358,3 +358,20 @@ body[data-view="qa"] #restored { display: none !important; }
 .ok-text { color: var(--ok); }
 .sku-table td small { display: block; color: var(--muted); }
 .sku-input { width: 9.5em; min-width: 0; }
+
+/* Research screen (step 2): identification, keyword standing and market evidence while the listing is written. */
+.research-live { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.research-live h2 { margin: 0 0 4px; font-size: 1.1rem; }
+.research-live h3 { margin: 14px 0 6px; font-size: .95rem; }
+.ident { margin: 0; padding-left: 18px; font-size: .9rem; }
+.ident li { margin: 2px 0; }
+/* Keyword standing: free (green edge), overlap (amber), taken (listed below the chips). */
+.kw-report .kw-chips { margin: 0 0 6px; }
+.kw-chip.free { border-color: var(--ok); }
+.kw-chip.overlap { border-color: var(--warn-ink); background: var(--warn-soft); }
+.kw-why { margin: 4px 0 0; padding: 0; list-style: none; font-size: .84rem; }
+.kw-why li { padding: 2px 0; }
+.kw-why li.warn { color: var(--warn-ink); }
+.kw-why li.fail { color: var(--bad); }
+.kw-why a { color: inherit; font-weight: 600; }
+.kw-legend { margin: 6px 0 0; font-size: .8rem; color: var(--muted); }

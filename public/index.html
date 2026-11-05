@@ -95,6 +95,18 @@
     </div>
     <p class="muted small">Usually 1–2 minutes. The free AI tier is sometimes busy; you can try again if it times out.</p>
     <ol id="steps" class="steps"></ol>
+    <section id="research-live" class="research-live" hidden aria-labelledby="research-live-h">
+      <h2 id="research-live-h">Research</h2>
+      <p class="small muted">What was found while the listing is being written. The same evidence is shown on the review page.</p>
+      <h3>What was identified</h3>
+      <div id="rl-ident"></div>
+      <h3>Keywords, overlap &amp; cannibalization</h3>
+      <p class="small muted">Real Google searches in Pakistan for this product. <strong>Free</strong> = no other Vaxaura product targets it; <strong>overlap</strong> = a shorter or longer form is another product’s keyword; <strong>taken</strong> = another product already targets it (not offered).</p>
+      <div id="rl-keywords" class="kw-report"></div>
+      <h3>Market evidence &amp; price</h3>
+      <div id="rl-market"></div>
+      <details><summary>Full research notes</summary><pre id="rl-notes" class="notes"></pre></details>
+    </section>
     <p id="progress-error" class="error" role="alert"></p>
     <div class="actions" id="progress-actions" hidden>
       <button id="retry" type="button" class="primary">Try again</button>
@@ -166,8 +178,8 @@
           <label for="f-kw">Focus keyword <span class="muted">(first is the focus keyword, others are secondary)</span></label>
           <input id="f-kw" name="focus_keyword" required>
           <div id="kw-ideas" class="kw-ideas" hidden>
-            <p class="small muted">Real Google searches in Pakistan for this product (most searched first). Click one to make it the focus keyword:</p>
-            <div id="kw-chips" class="kw-chips"></div>
+            <p class="small muted">Real Google searches in Pakistan for this product (most searched first). Click one to make it the focus keyword. Amber = overlaps another product’s keyword; the taken ones are listed, not offered:</p>
+            <div id="kw-chips" class="kw-report"></div>
           </div>
           <div id="clash" class="clash" hidden>
             <h3>Keyword cannibalization</h3>

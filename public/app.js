@@ -408,7 +408,7 @@ async function run() {
   if (state.product && !state.saved && state.dirty && !confirm('Write a new listing? The current listing and your edits will be replaced.')) return;
   running = true;
   show('progress');
-  $('#steps').innerHTML = ''; $('#progress-error').textContent = ''; $('#progress-actions').hidden = true;
+  $('#steps').innerHTML = ''; $('#progress-error').textContent = ''; $('#progress-actions').hidden = true; $('#research-live').hidden = true;
   state.hints = $('#hints').value.trim();
   const started = Date.now();
   const stop = startTimer();
@@ -449,6 +449,7 @@ async function run() {
     const r = await call('research', { mediaIds, hints: state.hints });
     lap('research', t0);
     Object.assign(state, { notes: r.notes, sources: r.sources, market: r.market, facts: r.facts });
+    renderResearchLive(r); // the research screen shows the findings while the listing is written
     const ex = r.market?.exact.length || 0, si = r.market?.similar.length || 0;
     const cat = r.market?.categories?.length ? '' : r.market?.newCategory ? ` · new category: ${r.market.newCategory}` : '';
     s.done(`Identified: ${r.identification?.product || 'product'}${r.identification?.brand ? ` (${r.identification.brand})` : ''} · Daraz + Naheed: ${ex} same, ${si} similar of ${r.market?.total ?? 0} · ${r.market?.keywords?.length || 0} real search keywords${cat}`);
@@ -647,23 +648,71 @@ $('#cats-refresh').addEventListener('click', async () => {
 
 // Real Google searches for this product: one click makes one the focus keyword (the secondary keywords stay).
 function renderKeywordIdeas() {
-  const pool = state.market?.keywords || [];
-  $('#kw-ideas').hidden = !pool.length;
-  const box = $('#kw-chips');
+  const m = state.market;
+  $('#kw-ideas').hidden = !(m?.keywords?.length || m?.keywordsTaken?.length);
+  renderKeywordReport($('#kw-chips'), m, (k) => {
+    const rest = F('focus_keyword').value.split(',').slice(1).map((s) => s.trim()).filter((s) => s && s.toLowerCase() !== k.kw.toLowerCase());
+    F('focus_keyword').value = [k.kw, ...rest].join(', ');
+    F('focus_keyword').dispatchEvent(new Event('input', { bubbles: true }));
+    renderKeywordIdeas();
+  });
+}
+
+// Keyword candidates with their standing against the shop: free, overlap (a shorter or longer form is
+// another product's keyword) and the taken ones (another product already targets them; listed, not
+// offered). onPick: the click handler of a chip on the review form; without it the chips only inform.
+function renderKeywordReport(box, market, onPick) {
   box.innerHTML = '';
-  const current = F('focus_keyword').value.split(',')[0].trim().toLowerCase();
+  const pool = market?.keywords || [], taken = market?.keywordsTaken || [];
+  if (!pool.length && !taken.length) { box.appendChild(el('p', 'Google offered no real search for this product; type the plainest phrase shoppers would use.', 'small muted')); return; }
+  const current = onPick ? F('focus_keyword').value.split(',')[0].trim().toLowerCase() : '';
+  const chips = el('div', null, 'kw-chips');
   for (const k of pool) {
-    const b = document.createElement('button');
-    b.type = 'button'; b.className = 'kw-chip' + (k.kw === current ? ' on' : ''); b.textContent = k.kw;
-    b.title = `Suggested by Google ${k.hits} time${k.hits > 1 ? 's' : ''}`;
-    b.addEventListener('click', () => {
-      const rest = F('focus_keyword').value.split(',').slice(1).map((s) => s.trim()).filter((s) => s && s.toLowerCase() !== k.kw);
-      F('focus_keyword').value = [k.kw, ...rest].join(', ');
-      F('focus_keyword').dispatchEvent(new Event('input', { bubbles: true }));
-      renderKeywordIdeas();
-    });
-    box.appendChild(b);
+    const b = el(onPick ? 'button' : 'span', k.kw, `kw-chip ${k.status === 'overlap' ? 'overlap' : 'free'}${k.kw === current ? ' on' : ''}${onPick ? '' : ' static'}`);
+    if (onPick) { b.type = 'button'; b.addEventListener('click', () => onPick(k)); }
+    b.title = `Suggested by Google ${k.hits} time${k.hits > 1 ? 's' : ''} · ${k.status === 'overlap' ? 'overlaps another product’s keyword' : 'free: no other product targets it'}`;
+    chips.appendChild(b);
   }
+  box.appendChild(chips);
+  const overlaps = pool.filter((k) => k.status === 'overlap');
+  if (overlaps.length || taken.length) {
+    const ul = el('ul', null, 'kw-why');
+    const who = (c) => (c.url ? link(c.url, `#${c.id} ${c.name}`) : `#${c.id} ${c.name}`);
+    for (const k of overlaps) for (const c of k.conflicts || []) {
+      const li = el('li', null, 'warn');
+      li.append(el('span', QA_ICON.warn, 'qa-icon'), ` “${k.kw}” overlaps `, who(c), ` (${STATUS[c.status] || c.status}): ${c.reason}.`);
+      ul.appendChild(li);
+    }
+    for (const t of taken) for (const b of t.by || []) {
+      const li = el('li', null, 'fail');
+      li.append(el('span', QA_ICON.fail, 'qa-icon'), ` “${t.kw}” is taken: `, who(b), ` (${STATUS[b.status] || b.status}) uses it as ${b.focus ? 'its focus keyword' : 'a secondary keyword'} — using it would be keyword cannibalization.`);
+      ul.appendChild(li);
+    }
+    box.appendChild(ul);
+  }
+  box.appendChild(el('p', `${pool.length - overlaps.length} free · ${overlaps.length} overlapping · ${taken.length} taken by other products`, 'kw-legend'));
+}
+
+// The research screen (step 2): what was identified, the keyword standing and the market evidence,
+// shown as soon as the research is back, while the listing is still being written.
+function renderResearchLive(r) {
+  const id = r.identification || {}, m = r.market;
+  const box = $('#rl-ident');
+  box.innerHTML = '';
+  const ul = el('ul', null, 'ident');
+  const row = (label, value) => { if (!value) return; const li = el('li'); li.append(el('strong', `${label}: `), String(value)); ul.appendChild(li); };
+  row('Product', id.product);
+  row('Brand', id.brand || 'none visible');
+  row('Type', id.product_type);
+  row('Label text', id.label_text);
+  row('Confidence', id.confidence);
+  row('Must confirm', (id.must_confirm || []).join('; '));
+  row('Category', m?.categories?.length ? m.categories.join(', ') : m?.newCategory ? `new category: ${m.newCategory}` : 'none of the shop’s categories fits');
+  box.appendChild(ul);
+  renderKeywordReport($('#rl-keywords'), m);
+  renderMarketInto($('#rl-market'), m);
+  $('#rl-notes').textContent = r.notes || '';
+  $('#research-live').hidden = false;
 }
 
 // Other products competing for the same search (from the live audit).
@@ -709,11 +758,21 @@ function offerCard(it, cls) {
   return a;
 }
 
+// The review page: the evidence box plus the one-line price explanation next to the price fields.
 function renderMarket(m) {
-  const box = $('#market');
+  renderMarketInto($('#market'), m);
+  const p = m?.pricing || {};
+  const ex = p.exact, si = p.similar;
+  $('#price-evidence').textContent = !m ? '' : p.basis === 'notes' ? 'Prices taken from your notes.'
+    : ex ? `Market for the same product: ${ex.min === ex.max ? rs(ex.min) : `${rs(ex.min)}–${rs(ex.max)}`} (${ex.n} listing${ex.n > 1 ? 's' : ''}).`
+      : si ? `No exact match; similar items sell for ${si.min === si.max ? rs(si.min) : `${rs(si.min)}–${rs(si.max)}`}.` : 'No market prices found — please check the price.';
+}
+
+// The market evidence into any box: the research screen (while the listing is written) and the review.
+function renderMarketInto(box, m) {
   box.innerHTML = '';
   const add = (tag, text, cls) => box.appendChild(el(tag, text, cls));
-  if (!m) { add('p', 'No market data for this listing.', 'muted'); $('#price-evidence').textContent = ''; return; }
+  if (!m) { add('p', 'No market data for this listing.', 'muted'); return; }
   const p = m.pricing || {};
   if (p.sale) add('p', `Suggested: ${rs(p.regular)} → ${rs(p.sale)}`, 'price-line');
   const why = add('ul', null, 'why');
@@ -741,10 +800,6 @@ function renderMarket(m) {
       s.append(a);
     }
   }
-  const ex = p.exact, si = p.similar;
-  $('#price-evidence').textContent = p.basis === 'notes' ? 'Prices taken from your notes.'
-    : ex ? `Market for the same product: ${ex.min === ex.max ? rs(ex.min) : `${rs(ex.min)}–${rs(ex.max)}`} (${ex.n} listing${ex.n > 1 ? 's' : ''}).`
-      : si ? `No exact match; similar items sell for ${si.min === si.max ? rs(si.min) : `${rs(si.min)}–${rs(si.max)}`}.` : 'No market prices found — please check the price.';
 }
 
 function readForm() {

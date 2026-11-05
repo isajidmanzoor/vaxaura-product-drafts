@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { keywordPool, cannibalization, stem } from '../lib/keywords.mjs';
+import { keywordPool, keywordReport, cannibalization, stem } from '../lib/keywords.mjs';
 import { seoAudit, nextSku, skuPrefix, hiddenCategory } from '../lib/woo.mjs';
 import { grade, SKU_FORMAT } from '../lib/qa.mjs';
 
@@ -45,6 +45,29 @@ test('keyword pool leaves out keywords the shop already targets', () => {
 
 test('keyword pool is empty for unrelated suggestions', () => {
   assert.deepEqual(keywordPool(counts(['face wash for men', 'gold pendant']), WATCH), []);
+});
+
+test('keyword report: free, overlapping and taken searches against the shop', () => {
+  const shop = [
+    { id: 536, name: 'Leopard Couple Watches', status: 'publish', url: 'https://vaxaura.com/product/couple-watches/', keywords: ['couple watches'] },
+    { id: 600, name: 'Couple Watch Set', status: 'draft', url: '', keywords: ['couple watch set'] },
+  ];
+  const r = keywordReport(counts(WATCH_SUGGESTIONS), WATCH, shop);
+  const by = Object.fromEntries(r.pool.map((k) => [k.kw, k]));
+  // Taken searches are not offered, but reported with the product that uses them.
+  assert.ok(!by['couple watches'] && !by['couple watch set']);
+  assert.deepEqual(r.taken.map((t) => t.kw).sort(), ['couple watch set', 'couple watches']);
+  assert.deepEqual(r.taken.find((t) => t.kw === 'couple watches').by.map((b) => `${b.id}:${b.focus}`), ['536:true']);
+  // Free, or overlapping with a product whose focus keyword is a shorter form.
+  assert.equal(by['leopard watch'].status, 'free');
+  assert.deepEqual(by['leopard watch'].conflicts, []);
+  assert.equal(by['black couple watches'].status, 'overlap');
+  assert.equal(by['black couple watches'].conflicts[0].id, 536);
+  assert.equal(by['black couple watch set'].conflicts[0].id, 600);
+  // Without a shop everything is free and nothing is taken.
+  const alone = keywordReport(counts(WATCH_SUGGESTIONS), WATCH, []);
+  assert.ok(alone.pool.every((k) => k.status === 'free'));
+  assert.deepEqual(alone.taken, []);
 });
 
 const SHOP = [

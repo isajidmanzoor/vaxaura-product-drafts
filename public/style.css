@@ -380,3 +380,6 @@ body[data-view="qa"] #restored { display: none !important; }
 .clash-fixes h4 { margin: 8px 0 4px; font-size: .88rem; }
 .clash-fixes p { margin: 4px 0; }
 .clash-fixes .kw-chips { margin: 4px 0 6px; }
+/* A button armed for its confirming second click ("Yes, …"), on any button and on link buttons. */
+button.danger { background: var(--bad); border-color: var(--bad); color: var(--bg); }
+.link-btn.danger, .restored .link-btn.danger { background: none; color: var(--bad); font-weight: 700; }

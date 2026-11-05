@@ -78,13 +78,38 @@ $('#login-form').addEventListener('submit', async (e) => {
   catch (err) { $('#login-error').textContent = err.status === 401 ? 'Incorrect password.' : err.message; }
   finally { btn.disabled = false; btn.textContent = 'Sign in'; }
 });
-$('#logout').addEventListener('click', async () => {
-  if (state.dirty && !confirm('Sign out? The listing you are editing has not been saved and will be removed from this device.')) return;
-  state.dirty = false;
-  restored = false; // nothing more is kept from this page
-  await clearKept();
-  await call('logout', {}).catch(() => {});
-  location.reload();
+// A browser confirm() box is answered "Cancel" by some browsers (in-app browsers, "prevent this page
+// from creating dialogs"), which made Start over, Sign out and "write a new listing" look dead. So a
+// click that throws work away asks for a second click on the same button instead: the first turns
+// it into "Yes, …" for 8 seconds, the second runs it.
+function askTwice(btn, label, run) {
+  if (btn.dataset.armed) {
+    clearTimeout(Number(btn.dataset.armed));
+    disarmButton(btn);
+    run();
+    return;
+  }
+  btn.dataset.label0 = btn.textContent;
+  btn.textContent = label; btn.classList.add('danger');
+  btn.dataset.armed = String(setTimeout(() => disarmButton(btn), 8000));
+}
+function disarmButton(btn) {
+  if (!btn.dataset.armed) return;
+  delete btn.dataset.armed;
+  btn.classList.remove('danger');
+  if (btn.dataset.label0 != null) { btn.textContent = btn.dataset.label0; delete btn.dataset.label0; }
+}
+
+$('#logout').addEventListener('click', (e) => {
+  const signOut = async () => {
+    state.dirty = false;
+    restored = false; // nothing more is kept from this page
+    await clearKept();
+    await call('logout', {}).catch(() => {});
+    location.reload();
+  };
+  if (state.dirty) askTwice(e.currentTarget, 'Yes, sign out – the unsaved listing is removed', signOut);
+  else signOut();
 });
 
 // ---------- branding ----------
@@ -405,7 +430,6 @@ function startTimer() {
 let running = false;
 async function run() {
   if (running) return;
-  if (state.product && !state.saved && state.dirty && !confirm('Write a new listing? The current listing and your edits will be replaced.')) return;
   running = true;
   show('progress');
   $('#steps').innerHTML = ''; $('#progress-error').textContent = ''; $('#progress-actions').hidden = true;
@@ -502,7 +526,11 @@ async function run() {
     persist(); // e.g. photos uploaded before an error
   }
 }
-$('#analyze').addEventListener('click', run);
+// Writing a new listing replaces the one being edited: a second click confirms it (no confirm() box).
+$('#analyze').addEventListener('click', (e) => {
+  if (state.product && !state.saved && state.dirty) askTwice(e.currentTarget, 'Yes, write a new listing – current edits are replaced', run);
+  else run();
+});
 $('#retry').addEventListener('click', run);
 $('#back').addEventListener('click', () => show('photos'));
 $('#review-back').addEventListener('click', () => show('photos'));
@@ -982,18 +1010,28 @@ $('#fix-ai').addEventListener('click', async () => {
     const w = await call('write', {
       mediaIds: state.media.map((m) => m.id), hints: state.hints, notes: state.notes, market: state.market, facts: state.facts, current: before,
     });
-    // Edits made while the AI was working would be lost: ask first.
-    if (JSON.stringify(readForm()) !== JSON.stringify(before) && !confirm('You changed the listing while the AI was working. Replace it with the AI’s fixed version?')) {
-      $('#fix-status').textContent = 'Kept your edits; the AI’s version was not used.';
+    const useAi = () => {
+      state.product = w.product;
+      fillForm(w.product);
+      renderAudit(w.audit, []);
+      state.dirty = true;
+      persist();
+      refreshAudit();
+      $('#fix-status').textContent = `Done · SEO ${w.audit.score}/100${w.audit.fixable.length ? ` · ${w.audit.fixable.length} still to fix` : ''}.`;
+    };
+    // Edits made while the AI was working would be lost: the owner chooses (no confirm() box, which
+    // some browsers answer with "Cancel" on their own).
+    if (JSON.stringify(readForm()) !== JSON.stringify(before)) {
+      const st = $('#fix-status');
+      st.textContent = 'You changed the listing while the AI was working. ';
+      const use = el('button', 'Use the AI’s version', 'secondary small-fix'); use.type = 'button';
+      const keep = el('button', 'Keep my edits', 'link-btn'); keep.type = 'button';
+      use.addEventListener('click', useAi);
+      keep.addEventListener('click', () => { st.textContent = 'Kept your edits; the AI’s version was not used.'; });
+      st.append(use, ' ', keep);
       return;
     }
-    state.product = w.product;
-    fillForm(w.product);
-    renderAudit(w.audit, []);
-    state.dirty = true;
-    persist();
-    refreshAudit();
-    $('#fix-status').textContent = `Done · SEO ${w.audit.score}/100${w.audit.fixable.length ? ` · ${w.audit.fixable.length} still to fix` : ''}.`;
+    useAi();
   } catch (err) {
     $('#fix-status').textContent = '';
     $('#form-errors').textContent = err.message;
@@ -1724,9 +1762,9 @@ async function resetWork() {
   show('photos');
 }
 $('#another').addEventListener('click', resetWork);
-$('#start-over').addEventListener('click', () => {
-  if (state.dirty && !confirm('Start over? The listing you are editing has not been saved and will be removed.')) return;
-  resetWork();
+$('#start-over').addEventListener('click', (e) => {
+  if (state.dirty) askTwice(e.currentTarget, 'Yes, start over – the unsaved listing is removed', resetWork);
+  else resetWork();
 });
 
 // ---------- keep the work when the page is left, reloaded or closed ----------

@@ -1,11 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { UNSAFE_HTML, SKU_RE, validate, normalizeListing, seoAudit } from '../lib/woo.mjs';
+import { UNSAFE_HTML, SKU_RE, validate, normalizeListing, seoAudit, uniqueSlug } from '../lib/woo.mjs';
 import { looksLike } from '../api/upload.js';
 
 test('unsafe HTML: scripts, handlers and javascript: links only', () => {
   for (const s of ['<script>x</script>', '< SCRIPT src=x>', '<img src=x onerror=alert(1)>', '<p onclick="x">', '<a href="javascript:alert(1)">x</a>', "<a href=' javascript:x'>"]) assert.ok(UNSAFE_HTML.test(s), s);
   for (const s of ['Size one = 2 pieces', '<p>javascript: the language</p>', '<iframe src="https://www.youtube.com/embed/x"></iframe>', '<p class="lone">a</p>', '<a href="https://vaxaura.com">shop</a>']) assert.ok(!UNSAFE_HTML.test(s), s);
+});
+
+test('URL slug must not be another product’s; uniqueSlug finds a free one of 45 characters at most', () => {
+  assert.equal(uniqueSlug('gold-heart-pendant', []), 'gold-heart-pendant');
+  assert.equal(uniqueSlug('gold-heart-pendant', ['gold-heart-pendant']), 'gold-heart-pendant-vaxaura');
+  assert.equal(uniqueSlug('gold-heart-pendant', ['gold-heart-pendant', 'gold-heart-pendant-vaxaura']), 'gold-heart-pendant-2');
+  assert.equal(uniqueSlug('gold-heart-pendant-vaxaura', ['gold-heart-pendant-vaxaura']), 'gold-heart-pendant-vaxaura-2');
+  const long = 'x'.repeat(45);
+  assert.equal(uniqueSlug(long, [long]), `${'x'.repeat(43)}-2`);
+  const shop = [{ id: 7, name: 'Gold Heart Pendant', status: 'publish', keywords: ['heart necklace'], slug: 'gold-heart-pendant' }];
+  const p = { name: 'Gold Heart Pendant – Necklace', short_description: '<p>x</p>', description: '<p>x</p>', images: [{ media_id: 1, alt: 'x', update_media: true }], seo: { title: 'x', description: 'x', focus_keyword: 'gold heart pendant' } };
+  const t = (slug) => seoAudit({ ...p, slug }, { shop }).tests.find((x) => x.id === 'qSlug');
+  assert.equal(t('gold-heart-pendant').pass, false);
+  assert.match(t('gold-heart-pendant').info, /#7 Gold Heart Pendant/);
+  assert.match(t('gold-heart-pendant').fix, /“gold-heart-pendant-vaxaura”/);
+  assert.equal(t('gold-heart-pendant-vaxaura').pass, true);
+  assert.ok(seoAudit({ ...p, slug: 'gold-heart-pendant' }, { shop }).fixable.some((x) => x.id === 'qSlug')); // blocks Save until unique
 });
 
 test('SKU format', () => {

@@ -37,10 +37,12 @@ desktops (review form with a sticky score card), in light and dark mode.
 4. **SEO check**: the same 16 tests Rank Math runs on a product, with the same points
    (`lib/woo.mjs` → `seoAudit`, verified against Rank Math's own editor: `test/audit.test.mjs`).
    The AI rewrites until the score is 100/100. The score updates live while you edit.
-   Three Vaxaura checks go beyond Rank Math (no points, but they trigger a rewrite): the long
+   Four Vaxaura checks go beyond Rank Math (no points, but they trigger a rewrite): the long
    description has 350+ words, the keyword density is at most 2.3% (Rank Math alone passed a
-   243-word description at 2.47%), and the focus keyword is 2-4 words naming the product (no
-   "price in pakistan" in the keyword or slug). SEO titles stay within 60 characters and keep the
+   243-word description at 2.47%), the focus keyword is 2-4 words naming the product (no
+   "price in pakistan" in the keyword or slug), and the URL slug is not already another
+   product's (the shop's slugs are compared live; a clash is made unique with "-vaxaura" or
+   "-2" before Save, and Save itself refuses a duplicate too). SEO titles stay within 60 characters and keep the
    brand's spelling (ST, L'Oréal). If checks still fail, "Save anyway at SEO N/100" saves anyway.
    Possible duplicates of existing products are shown before you save.
    **Keyword cannibalization**: the keywords are compared with every product in the shop; a clash

@@ -95,6 +95,12 @@ test('cannibalization: same focus, their secondary, my secondary, overlap', () =
   assert.deepEqual(sev(['gold heart pendant']), ['374:medium']); // "heart pendant" inside mine
   assert.deepEqual(sev(['butterfly earrings']), []);
   assert.deepEqual(cannibalization({ keywords: [] }, SHOP), []);
+  // kind names the fix: change a focus keyword, or drop my clashing secondary keyword.
+  const kind = (kws) => cannibalization({ keywords: kws }, SHOP).map((c) => c.kind);
+  assert.deepEqual(kind(['couple watches']), ['same']);
+  assert.deepEqual(kind(['black couple watch set']), ['their-secondary']);
+  assert.deepEqual(kind(['silver watch', 'heart pendant']), ['my-secondary']);
+  assert.deepEqual(kind(['gold heart pendant']), ['overlap']);
 });
 
 const listing = (kw) => ({

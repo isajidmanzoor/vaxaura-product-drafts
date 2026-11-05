@@ -375,3 +375,8 @@ body[data-view="qa"] #restored { display: none !important; }
 .kw-why li.fail { color: var(--bad); }
 .kw-why a { color: inherit; font-weight: 600; }
 .kw-legend { margin: 6px 0 0; font-size: .8rem; color: var(--muted); }
+/* Fixes under the review page's keyword-cannibalization box. */
+.clash-fixes { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
+.clash-fixes h4 { margin: 8px 0 4px; font-size: .88rem; }
+.clash-fixes p { margin: 4px 0; }
+.clash-fixes .kw-chips { margin: 4px 0 6px; }

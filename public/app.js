@@ -717,11 +717,22 @@ function renderResearchLive(r) {
   $('#research-live').hidden = false;
 }
 
-// Other products competing for the same search (from the live audit).
+// Other products competing for the same search (from the live audit), with the fixes QA & analytics
+// offers: drop a clashing secondary keyword, make the focus keyword a free real search, or give the
+// other product a new free keyword (previewed and applied in the fix dialog).
+// Free searches for the other product are asked from Google once per keyword and kept, because this
+// is re-rendered on every keystroke of the review form.
+const CLASH_ALTS = new Map();
+// After a keyword fix is applied (or undone) to another product from the review page, the live audit
+// compares against the shop as it is now, so a resolved clash disappears from the box.
+function shopChanged() {
+  if (view !== 'review') return;
+  call('context').then((ctx) => { state.ctx = ctx; CLASH_ALTS.clear(); refreshAudit(); }).catch(() => {});
+}
 function renderClashes(conflicts = []) {
   $('#clash').hidden = !conflicts.length;
-  const ul = $('#clash-list');
-  ul.innerHTML = '';
+  const ul = $('#clash-list'), fix = $('#clash-fix');
+  ul.innerHTML = ''; fix.innerHTML = '';
   for (const c of conflicts) {
     const li = document.createElement('li');
     const badge = document.createElement('span');
@@ -731,6 +742,64 @@ function renderClashes(conflicts = []) {
     a.textContent = `#${c.id} ${c.name}`;
     li.append(badge, ' ', a, ` (${STATUS[c.status] || c.status}) — ${c.reason}`);
     ul.appendChild(li);
+  }
+  if (!conflicts.length) return;
+  const lower = (s) => String(s || '').toLowerCase();
+  const kws = F('focus_keyword').value.split(',').map((s) => s.trim()).filter(Boolean);
+  const [focus, ...secondary] = kws;
+  const setKeywords = (list) => { F('focus_keyword').value = list.join(', '); F('focus_keyword').dispatchEvent(new Event('input', { bubbles: true })); renderKeywordIdeas(); };
+  const chip = (kw, title, on) => { const b = el('button', kw, 'kw-chip free'); b.type = 'button'; if (title) b.title = title; b.addEventListener('click', on); return b; };
+
+  // 1) This listing. A secondary keyword that is another product's focus keyword is simply dropped.
+  fix.appendChild(el('h4', 'Fix this listing'));
+  for (const c of conflicts.filter((c) => c.kind === 'my-secondary')) {
+    const p = el('p', null, 'small');
+    const b = el('button', `Remove “${c.keyword}”`, 'secondary small-fix'); b.type = 'button';
+    b.addEventListener('click', () => setKeywords(kws.filter((k) => lower(k) !== lower(c.keyword))));
+    p.append(`“${c.keyword}” is the focus keyword of #${c.id}: drop it from the secondary keywords. `, b);
+    fix.appendChild(p);
+  }
+  // A focus keyword clash: pick a free real search from the research (no other product targets it).
+  const focusClash = conflicts.filter((c) => c.kind !== 'my-secondary');
+  if (focusClash.length) {
+    const contested = new Set(focusClash.map((c) => lower(c.keyword)));
+    const free = (state.market?.keywords || []).filter((k) => k.status !== 'overlap' && !contested.has(lower(k.kw)) && lower(k.kw) !== lower(focus));
+    if (free.length) {
+      fix.appendChild(el('p', 'Make the focus keyword a free real Google search instead (the SEO title, URL, first sentences and main photo alt then need it; “Fix with AI” rewrites them):', 'small'));
+      const chips = el('div', null, 'kw-chips');
+      for (const k of free) chips.appendChild(chip(k.kw, `Suggested by Google ${k.hits} time${k.hits > 1 ? 's' : ''}`, () => setKeywords([k.kw, ...secondary.filter((s) => lower(s) !== lower(k.kw))])));
+      fix.appendChild(chips);
+    } else fix.appendChild(el('p', 'Google offered no free real search for this product. Make the keyword more specific by hand (colour, shape, brand), then check it under QA & analytics → Check a keyword.', 'small'));
+  }
+
+  // 2) The other product: a new free keyword for it, previewed and applied in the fix dialog.
+  const others = [...new Map(focusClash.map((c) => [c.id, c])).values()];
+  if (others.length) fix.appendChild(el('h4', 'Or change the other product'));
+  for (const c of others) {
+    const p = el('p', null, 'small');
+    const out = el('div');
+    const showAlts = (alts) => {
+      out.innerHTML = '';
+      if (!alts.length) { out.appendChild(el('p', `Google offers no free search near “${c.keyword}”. Choose one by hand under QA & analytics → Fix keyword.`, 'small muted')); return; }
+      out.appendChild(el('p', `Free searches for #${c.id} — click one to preview the change (nothing changes until you apply it there):`, 'small muted'));
+      const chips = el('div', null, 'kw-chips');
+      for (const x of alts) chips.appendChild(chip(x.kw, '', () => openFix(c.id, x.kw)));
+      out.appendChild(chips);
+      if (c.status === 'publish') out.appendChild(el('p', REDIRECT_NOTE, 'small muted'));
+    };
+    const b = el('button', `Find a free keyword for #${c.id}`, 'secondary small-fix'); b.type = 'button';
+    b.addEventListener('click', async () => {
+      b.disabled = true; out.textContent = 'Asking Google for real searches no product uses…';
+      try {
+        const r = await call('qa', { keyword: c.keyword });
+        CLASH_ALTS.set(c.keyword, r.related || []);
+        showAlts(CLASH_ALTS.get(c.keyword).filter((x) => !kws.some((k) => lower(k) === lower(x.kw))));
+      } catch (err) { out.textContent = err.message; }
+      finally { b.disabled = false; }
+    });
+    p.append(`#${c.id} ${c.name} (${STATUS[c.status] || c.status}) keeps “${c.keyword}” unless you change it: `, b);
+    fix.append(p, out);
+    if (CLASH_ALTS.has(c.keyword)) showAlts(CLASH_ALTS.get(c.keyword).filter((x) => !kws.some((k) => lower(k) === lower(x.kw))));
   }
 }
 
@@ -1494,6 +1563,7 @@ $('#fix-apply').addEventListener('click', async () => {
   try {
     const r = await call('fix', { action: 'apply', id: p.id, keyword: p.keyword, edits: fixState.edits, modified: p.modified });
     renderFixResult(r, 'Applied.');
+    shopChanged();
   } catch (err) { $('#fix-msg').textContent = err.message; $('#fix-apply').disabled = false; }
   finally { fixState.busy = false; $('#fix-recheck').disabled = false; }
 });
@@ -1510,7 +1580,7 @@ $('#fix-undo').addEventListener('click', async () => {
   fixState.busy = true;
   $('#fix-undo').disabled = true;
   $('#fix-msg').textContent = 'Restoring…';
-  try { renderFixResult(await call('fix', { action: 'undo', id: fixState.id }), 'Restored the earlier version.'); }
+  try { renderFixResult(await call('fix', { action: 'undo', id: fixState.id }), 'Restored the earlier version.'); shopChanged(); }
   catch (err) { $('#fix-msg').textContent = err.message; }
   finally { fixState.busy = false; $('#fix-undo').disabled = false; }
 });

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { keywordPool, keywordReport, cannibalization, stem } from '../lib/keywords.mjs';
 import { seoAudit, nextSku, skuPrefix, hiddenCategory } from '../lib/woo.mjs';
-import { grade, SKU_FORMAT } from '../lib/qa.mjs';
+import { grade, SKU_FORMAT, shopClashes } from '../lib/qa.mjs';
 
 // Google autocomplete (gl=pk) for the Leopard couple watches, 2026-10-31.
 const WATCH_SUGGESTIONS = [
@@ -86,6 +86,19 @@ const SHOP = [
   { id: 374, name: 'Emerald Heart Pendant', status: 'publish', keywords: ['heart pendant', 'green heart necklace'] },
   { id: 271, name: 'Triple Black Heart Pendant', status: 'publish', keywords: ['black heart pendant'] },
 ];
+
+test('shop-wide clashes: each pair once, must-fix first, the product itself never counted', () => {
+  const shop = [...SHOP, { id: 900, name: 'Another Couple Watch', status: 'draft', keywords: ['couple watches'] }];
+  const c = shopClashes(shop);
+  const pairs = c.map((x) => `${[x.a.id, x.b.id].sort().join('-')}:${x.severity}`);
+  assert.deepEqual(pairs, [...new Set(pairs)], 'no pair twice');
+  assert.ok(pairs.includes('536-900:high'));
+  assert.ok(pairs.includes('271-374:medium')); // "black heart pendant" contains "heart pendant"
+  assert.ok(!pairs.some((p) => /^(\d+)-\1:/.test(p)));
+  assert.equal(c[0].severity, 'high');
+  // Excluding the product itself from a shop that contains it.
+  assert.deepEqual(cannibalization({ keywords: ['couple watches'] }, shop, 536).map((x) => x.id), [900]);
+});
 
 test('cannibalization: same focus, their secondary, my secondary, overlap', () => {
   const sev = (kws) => cannibalization({ keywords: kws }, SHOP).map((c) => `${c.id}:${c.severity}`);

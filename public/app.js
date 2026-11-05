@@ -1374,6 +1374,25 @@ function renderCannibal(r) {
         if (f.alternatives.length > 1) p.append(` Other free searches: ${f.alternatives.slice(1).join(', ')}.`);
         if (f.live) p.append(' ', REDIRECT_NOTE);
         p.append(' ', fixButton(f.id, f.to));
+      } else if (f.alternatives === null) {
+        // Google is asked for a few products per run; for the others, on demand.
+        p.append(`Fix #${f.id}: give it a focus keyword no other product targets instead of “${f.from || 'none'}”. `);
+        const b = el('button', 'Find a free keyword', 'secondary small-fix'); b.type = 'button';
+        const out = el('span');
+        b.addEventListener('click', async () => {
+          b.disabled = true; out.textContent = ' Asking Google for real searches no product uses…';
+          try {
+            const r = await call('qa', { keyword: f.from || g.keyword });
+            out.textContent = '';
+            if (!r.related.length) { out.append(' Google offered no free search; choose a more specific focus keyword (colour, shape, brand) by hand.'); return; }
+            const chips = el('span', null, 'kw-chips');
+            for (const x of r.related) { const c = el('button', x.kw, 'kw-chip free'); c.type = 'button'; c.title = 'Preview this keyword for the product'; c.addEventListener('click', () => openFix(f.id, x.kw)); chips.appendChild(c); }
+            out.append(' ', chips);
+            if (f.live) out.append(' ', REDIRECT_NOTE);
+          } catch (err) { out.textContent = ' ' + err.message; }
+          finally { b.disabled = false; }
+        });
+        p.append(b, out);
       } else p.append(`#${f.id}: Google offered no free search for this product; choose a more specific focus keyword (colour, shape, brand) by hand.`);
       card.appendChild(p);
     }
@@ -1639,14 +1658,32 @@ function renderFixResult(r, done) {
 $('#qa-store-run').addEventListener('click', async () => {
   const btn = $('#qa-store-run');
   btn.disabled = true;
-  $('#qa-store-status').textContent = 'Checking every product in the shop… (up to a minute)';
+  const st = $('#qa-store-status');
+  st.textContent = 'Checking every product in the shop… (up to a minute)';
   $('#qa-store').innerHTML = '';
   try {
-    renderStore(await call('qa', { store: true }));
-    $('#qa-store-status').textContent = '';
-  } catch (err) { $('#qa-store-status').textContent = err.message; }
+    // 100 products per request, added up here: a big shop fits the host's per-request limits
+    // (Cloudflare's free plan allows 50 outside requests per call) and shows its progress.
+    let r = await call('qa', { store: true, page: 0 });
+    for (let p = 1; p < (r.pages || 1); p++) {
+      st.textContent = `Checked ${r.totals.products} of ${r.total} products…`;
+      r = mergeStore(r, await call('qa', { store: true, page: p }));
+    }
+    renderStore(r);
+    st.textContent = '';
+  } catch (err) { st.textContent = err.message; }
   finally { btn.disabled = false; }
 });
+// Two pages of the shop report as one (the clashes and categories come with the first page).
+function mergeStore(a, b) {
+  const t = { ...a.totals };
+  for (const k of ['products', 'scoreSum', 'perfectScore', 'noKeyword', 'photos', 'heavyPhotos', 'skuIssues']) t[k] = (a.totals[k] || 0) + (b.totals[k] || 0);
+  t.photoMB = Math.round(((a.totals.photoMB || 0) + (b.totals.photoMB || 0)) * 10) / 10;
+  t.avgScore = t.products ? Math.round(t.scoreSum / t.products) : 0;
+  t.byStatus = { ...a.totals.byStatus };
+  for (const [s, n] of Object.entries(b.totals.byStatus || {})) t.byStatus[s] = (t.byStatus[s] || 0) + n;
+  return { ...a, totals: t, skuIssues: [...a.skuIssues, ...b.skuIssues], products: [...a.products, ...b.products].sort((x, y) => y.fail - x.fail || x.score - y.score) };
+}
 
 function el(tag, text, cls) { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
 function link(href, text) { const a = el('a', text); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer'; return a; }
@@ -1680,6 +1717,7 @@ function renderStore(r) {
       ul.appendChild(li);
     }
     box.appendChild(ul);
+    if (r.clashesTotal > r.clashes.length) box.appendChild(el('p', `Showing ${r.clashes.length} of ${r.clashesTotal}; the counts above include them all. The cannibalization report below groups them with fixes.`, 'small muted'));
     box.appendChild(el('p', 'Fix: give one of the two products a different focus keyword (open it in WordPress, or check it above for details).', 'small muted'));
   }
   if (r.junkCategories.length) {

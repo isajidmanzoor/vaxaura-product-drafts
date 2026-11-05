@@ -155,6 +155,34 @@ Free plan limits: 100,000 requests a day, 10 ms of server CPU per request (waiti
 WordPress, Google, Daraz or Naheed does not count) and 50 outside requests per request (research fetches at
 most 10 store thumbnails and 3 Naheed searches for that reason). There is no time limit while the browser waits.
 
+## Big shops
+
+Measured with `node cli/load-test.mjs 1000` (a fake WordPress with 1,000 products answering in
+200 ms, Node 24; your numbers differ with the host and WordPress, the shape does not):
+
+| What | WordPress requests | Data | Time |
+|---|---|---|---|
+| Store context (loaded at the start of every run) | 13 | 1.6 MB | ~2.5 s |
+| Live SEO audit: first time / every keystroke after | 10 / 0 | 1.6 MB / 0 | ~2.3 s / instant |
+| QA of one product | 5 | tiny | ~2 s |
+| Shop report, each page of 100 products | 15–26 | 0.8–2.4 MB | 1.5–4 s |
+| Shop report, the whole shop at once (Node host) | ~160 | ~10 MB | ~15 s |
+| Cannibalization report | ~20, plus Google for 5 products (8 each) | depends on the clashes | ~6 s |
+
+What keeps it affordable: the shop-wide lists ask WordPress only for the fields they use
+(`_fields`: 1,000 products are 1.6 MB instead of 7 MB), the shop's keywords are tokenised once and
+kept with the list so the live audit costs nothing per keystroke, the shop report is graded in pages
+of 100 that the browser adds up, the cannibalization report asks Google for alternatives for 5
+products per run (the others on demand, "Find a free keyword"), and the AI prompts carry only the
+prices of the listing's category and the keywords near its candidates (about 1,700 tokens instead
+of 24,000 with 1,000 products).
+
+Hosts: on Cloudflare's free plan a request may make 50 outside requests and use 10 ms of CPU
+(parsing WordPress's JSON counts; waiting does not). Up to roughly 300–400 products everything
+fits. Beyond that the store context alone (1.6 MB of JSON at 1,000 products) can hit the CPU limit,
+and research, writing and the reports fail with a Cloudflare error: for a shop that size use the
+Node host (Render, above) or Cloudflare's paid plan (30 s of CPU per request). The code is the same.
+
 ## Local
 
 ```bash

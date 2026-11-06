@@ -44,7 +44,10 @@ desktops (review form with a sticky score card), in light and dark mode.
    a free one unless nothing free fits); the secondary keywords come from the candidates too. With
    **Search Console** connected (free, below) every candidate also carries how often vaxaura.com was
    really shown on Google for it in the last 90 days, and the writer prefers a candidate with
-   impressions between equals. Categories
+   impressions between equals. In the text the keywords read as a shopper expects them
+   ("vitamin C face wash", "Tissot PRX couple watch": brand spelling, letters and acronyms in
+   capitals, a capital at the start of a sentence; Rank Math ignores case, readers do not), and a
+   branded item is "at Vaxaura", never "by Vaxaura". Categories
    are chosen only when they fit; otherwise a new category is suggested (created when the draft is saved).
 3. **Listing** (`gemini-3.8-flash` first for better copy, falls back to 3.6 Flash / 3.5 Flash-Lite; JSON output): title, slug, short and long description with FAQ,
    categories, tags, suggested price, stock, weight/size, attributes, alt text per photo, Rank Math

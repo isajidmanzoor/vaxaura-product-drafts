@@ -29,7 +29,25 @@ test('a product page gives its photos: og:image first, Daraz resized copies fold
   assert.equal(isPage('text/html; charset=utf-8'), true);
   assert.equal(isPage('image/jpg'), false);
 });
-import { titleCase } from '../lib/ai.mjs';
+import { titleCase, keywordCase, recase, vaxSuffix } from '../lib/ai.mjs';
+
+test('keywords read naturally in prose: brand spelling, letters and acronyms in capitals, the rest lowercase', () => {
+  const garnier = 'Garnier Bright Complete Vitamin C Face Wash 100ml – Facial Cleanser';
+  assert.equal(keywordCase('vitamin c face wash', garnier, 'Garnier'), 'vitamin C face wash');
+  assert.equal(keywordCase('garnier face wash 100ml', garnier, 'Garnier'), 'Garnier face wash 100ml');
+  assert.equal(keywordCase('tissot prx couple watch', 'Tissot PRX Couple Watch Set – Silver Dial Wristwatch', 'Tissot'), 'Tissot PRX couple watch');
+  assert.equal(keywordCase('st london foundation', 'ST London Matt Fusion Foundation – Cosmetics', 'ST London'), 'ST London foundation');
+  assert.equal(keywordCase('gold heart pendant', 'Gold Heart Pendant – Necklace', ''), 'gold heart pendant');
+  assert.equal(keywordCase('loreal glycolic bright cleanser', 'L’Oréal Glycolic Bright Cleanser', 'L’Oréal'), 'loreal glycolic bright cleanser'); // spelled differently: left alone
+  const html = '<p>The <strong>vitamin c face wash by Vaxaura</strong> cleanses.</p><p>vitamin c face wash suits all skin. Our Vitamin C Face Wash is mild; a vitamin c face wash, daily.</p>';
+  assert.equal(recase(html, 'vitamin c face wash', garnier, 'Garnier'),
+    '<p>The <strong>vitamin C face wash by Vaxaura</strong> cleanses.</p><p>Vitamin C face wash suits all skin. Our Vitamin C face wash is mild; a vitamin C face wash, daily.</p>');
+  assert.equal(recase('<li>Vitamin c face wash 100ml tube</li>', 'vitamin c face wash', garnier, 'Garnier'), '<li>Vitamin C face wash 100ml tube</li>');
+  assert.equal(recase('a vitamin c face washer', 'vitamin c face wash', garnier, 'Garnier'), 'a vitamin c face washer', 'whole words only');
+  assert.equal(recase('<p>Gold heart pendant in gold tone.</p>', 'gold heart pendant', 'Gold Heart Pendant', ''), '<p>Gold heart pendant in gold tone.</p>');
+  assert.equal(vaxSuffix('Garnier'), 'at Vaxaura');
+  assert.equal(vaxSuffix(''), 'by Vaxaura');
+});
 import { possibleDuplicates, relatedProducts, withSeeAlso, stripSeeAlso } from '../lib/woo.mjs';
 
 test('photo links may not reach internal addresses', () => {

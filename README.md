@@ -143,6 +143,11 @@ position of the last 28 days (one query for the whole shop) and whether Google h
 index (asked ten products per request after the table is on screen, so a big shop stays within the
 host's limits), plus a tile with how many products Google showed at all and how many are not indexed.
 
+The report also asks the Sitemaps API which sitemaps Google has for the site, when it last read
+them and how many URLs are indexed; when none is submitted it says so and names the one to submit
+(vaxaura.com/sitemap_index.xml). On the first live run 19 of 38 live products were "unknown to
+Google" for exactly that reason.
+
 Every check of a live product also reads Rank Math's `product-sitemap.xml` (no Search Console
 needed): a product missing from it is hard for Google to find at all.
 

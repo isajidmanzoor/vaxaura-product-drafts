@@ -109,6 +109,35 @@ test('keyword & URL QA of the couple watches link', async () => {
   assert.equal(k.live, true);
 });
 
+test('keyword & URL QA with Search Console: impressions of the focus keyword, the page’s rank, its searches', async () => {
+  const watch = product(536, 'Leopard Couple Watches Black Metal – Skeleton Dial Watch Set', 'couple-watches-black-metal-vaxaura', 'couple watches black metal, couple watches', 'publish', 141);
+  const all = [watch, product(900, 'Couple Watch Draft', 'couple-watch-draft', 'couple watches', 'draft', 141)];
+  const asked = [];
+  const gsc = {
+    pageStats: async (url) => { asked.push(url); return [{ kw: 'couple watches black metal', impressions: 40, clicks: 2, position: 7.5 }, { kw: 'leopard watch', impressions: 15, clicks: 0, position: 18 }]; },
+    keywordStats: async (kws) => { asked.push(kws); return { setup: true, stats: { 'couple watches black metal': { impressions: 40, clicks: 2, position: 7.5 }, 'black couple watch set': { impressions: 9, clicks: 1, position: 12 } } }; },
+  };
+  const k = await keywordQa(watch, all, cats, { suggest, site: SITE, console: gsc });
+  const c = byLabel(k.checks);
+  assert.equal(asked[0], `${SITE}/product/couple-watches-black-metal-vaxaura/`);
+  assert.ok(asked[1].includes('couple watches black metal') && asked[1].includes('black couple watch set'), 'the focus, secondary and suggested keywords are asked');
+  assert.equal(c['Focus keyword shown on Google in the last 90 days'].status, 'pass');
+  assert.match(c['Focus keyword shown on Google in the last 90 days'].info, /40 impressions, 2 clicks, average position 7\.5/);
+  assert.equal(c['This page ranks for its focus keyword'].status, 'pass');
+  assert.match(c['This page ranks for its focus keyword'].info, /position 7\.5 \(page 1\)/);
+  assert.match(c['Searches this page is shown for'].info, /couple watches black metal \(40\), leopard watch \(15\)/);
+  assert.equal(k.console.setup, true);
+  assert.equal(k.console.rows.length, 2);
+  assert.deepEqual(k.suggestions.find((s) => s.kw === 'black couple watch set').console, { impressions: 9, clicks: 1, position: 12 });
+  // Not set up: one reminder, nothing else changes.
+  const plain = await keywordQa(watch, all, cats, { suggest, site: SITE });
+  assert.equal(byLabel(plain.checks)['Search Console connected (free: real impressions and ranks)'].status, 'warn');
+  assert.equal(plain.console.setup, false);
+  // Google down: the other checks stand.
+  const down = await keywordQa(watch, all, cats, { suggest, site: SITE, console: { pageStats: async () => { throw new Error('x'); }, keywordStats: async () => { throw new Error('x'); } } });
+  assert.equal(byLabel(down.checks)['Search Console answered'].status, 'warn');
+});
+
 test('cannibalization report: groups, keeper and a different free keyword for each other product', async () => {
   const all = [
     product(374, 'Emerald Heart Pendant – Heart Pendant', 'emerald-heart-pendant-heart-pendant', 'heart pendant'),

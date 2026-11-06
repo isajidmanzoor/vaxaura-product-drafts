@@ -39,7 +39,10 @@ desktops (review form with a sticky score card), in light and dark mode.
    cannibalization, Daraz/Naheed listings and the price suggestion - as soon as the research is back,
    while the listing is still being written; the review page shows it again.
    The focus keyword must be one of the candidates (the most specific one with high or medium demand,
-   a free one unless nothing free fits); the secondary keywords come from the candidates too. Categories
+   a free one unless nothing free fits); the secondary keywords come from the candidates too. With
+   **Search Console** connected (free, below) every candidate also carries how often vaxaura.com was
+   really shown on Google for it in the last 90 days, and the writer prefers a candidate with
+   impressions between equals. Categories
    are chosen only when they fit; otherwise a new category is suggested (created when the draft is saved).
 3. **Listing** (`gemini-3.8-flash` first for better copy, falls back to 3.6 Flash / 3.5 Flash-Lite; JSON output): title, slug, short and long description with FAQ,
    categories, tags, suggested price, stock, weight/size, attributes, alt text per photo, Rank Math
@@ -108,9 +111,34 @@ the review page until you type your own.
 Note: vaxaura.com's theme removes Rank Math's "Content AI used" test on products
 (filter `rank_math/researches/tests` in the vaxaura theme's `functions.php`). Without it the maximum is 95.
 
+## Search Console (free, optional)
+
+Google Search Console is the one free source of real numbers: how often vaxaura.com was shown on
+Google for a search, how often it was clicked, and at which position. Connected, the tool shows on
+every keyword chip how often the shop was really shown for it (`imp`), each product check gets a
+**Search Console** group (impressions of its focus keyword, where the page ranks for it, the
+searches the page is already shown for), the writer prefers candidates with impressions, and "QA &
+analytics → Search Console" lists the searches with proven demand that no product targets yet.
+Read-only: the account can only read the reports.
+
+1. https://console.cloud.google.com → create a project (any name) → **APIs & Services → Library** →
+   enable **Google Search Console API**.
+2. **IAM & Admin → Service Accounts → Create service account** (any name) → open it → **Keys → Add
+   key → Create new key → JSON**. A `.json` file downloads; it holds `client_email` and `private_key`.
+3. https://search.google.com/search-console → the vaxaura.com property → **Settings → Users and
+   permissions → Add user** → the `client_email` from the file, permission **Full** (or Restricted).
+4. Cloudflare: the Worker → **Settings → Variables and Secrets** → add the secret
+   `GSC_SERVICE_ACCOUNT` = the whole content of the `.json` file (paste it as one value). Optional
+   `GSC_SITE` = the property as Search Console names it (`sc-domain:vaxaura.com` or
+   `https://vaxaura.com/`); without it the tool tries both. Render/Vercel: the same variables.
+
+Google publishes the data about two days late; the tool reads the last 90 days and remembers each
+answer for ten minutes. Without the secret everything else works as before and the checks say
+"Search Console not connected".
+
 ## Cost
 
-Free. Gemini API free tier (aistudio.google.com key, no card). Checked 2026-10-30: `gemini-2.5-*` is
+Free. Gemini API free tier (aistudio.google.com key, no card). Search Console API: free. Checked 2026-10-30: `gemini-2.5-*` is
 closed to new keys and Google Search grounding has no free quota on the 3.x models, which is why the
 research uses Google autocomplete + Daraz and Naheed search instead. On the free tier Google may use the prompts
 and photos to improve its products. Vercel Hobby is free.
@@ -219,6 +247,7 @@ The dev server reads the same variables from the environment or from
 - `lib/keywords.mjs` – keyword candidates from Google searches, keyword cannibalization
 - `lib/qa.mjs` – QA of a product and the shop-wide report
 - `lib/keyword-qa.mjs` – keyword & URL QA, cannibalization groups and fixes, keyword checker
+- `lib/console.mjs` – Google Search Console (service account): impressions, clicks and positions per search
 - `lib/fix.mjs` – keyword fix for products already in the shop: preview, apply, undo
 - `lib/maintenance.mjs` – photo and SKU fixes for products already in the shop
 - `lib/http.mjs` – login cookie, route wrapper, security headers, required settings

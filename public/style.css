@@ -377,6 +377,9 @@ body[data-view="qa"] #restored { display: none !important; }
 .kw-chip.on .demand { color: var(--ink); }
 .kw-chip.unsearched { text-decoration: line-through; opacity: .55; cursor: default; border-color: var(--line); background: var(--field); }
 .kw-chip.unverified { border-style: dashed; }
+/* Search Console impressions on a chip (how often the shop was shown on Google for that search). */
+.kw-chip .imp { margin-left: 6px; font-size: .7rem; font-weight: 600; color: var(--ok); white-space: nowrap; }
+.console-box { margin-top: 22px; padding-top: 4px; border-top: 1px solid var(--line); }
 /* "This tool's runs": the products saved with the tool, from the shop. */
 .shop-runs { margin-top: 14px; }
 .shop-runs h3 { margin: 0 0 4px; font-size: .95rem; }

@@ -475,6 +475,12 @@ async function run() {
     lap('research', t0);
     Object.assign(state, { notes: r.notes, sources: r.sources, market: r.market, facts: r.facts });
     renderResearchLive(r); // the research screen shows the findings while the listing is written
+    // Search Console (free, when set up): how often Google already showed the shop for each candidate,
+    // before the listing is written - real numbers next to autocomplete's demand tiers.
+    if (r.market?.keywords?.length) {
+      try { applyConsole(state.market, await call('qa', { console: { keywords: r.market.keywords.map((k) => k.kw) } })); renderResearchLive(r); }
+      catch { /* the autocomplete evidence stands */ }
+    }
     const ex = r.market?.exact.length || 0, si = r.market?.similar.length || 0;
     const cat = r.market?.categories?.length ? '' : r.market?.newCategory ? ` · new category: ${r.market.newCategory}` : '';
     s.done(`Identified: ${r.identification?.product || 'product'}${r.identification?.brand ? ` (${r.identification.brand})` : ''} · Daraz + Naheed: ${ex} same, ${si} similar of ${r.market?.total ?? 0} · ${r.market?.keywords?.length || 0} real search keywords${cat}`);
@@ -693,14 +699,23 @@ const DEMAND_MARK = { high: '▲▲▲', medium: '▲▲', low: '▲' };
 function demandText(k) {
   const d = k.tier ? `demand ${k.tier}${k.demand != null ? ` (${k.demand}/100 of the best candidate, from Google’s ranking of searches)` : ''}` : `suggested by Google ${k.hits} time${k.hits > 1 ? 's' : ''}`;
   const real = k.searched === true ? 'a real Google search' : k.searched === false ? 'Google does not offer this search' : 'not yet checked with Google';
-  return `${d} · ${real}`;
+  const gsc = k.console?.impressions ? ` · Search Console: ${k.console.impressions} impressions, ${k.console.clicks} clicks, average position ${k.console.position ?? '-'} (last 90 days)` : '';
+  return `${d} · ${real}${gsc}`;
 }
 function keywordChip(k, { tag = 'span', extra = '', onPick } = {}) {
   const b = el(tag, null, `kw-chip ${extra}${k.searched === false ? ' unsearched' : k.searched == null ? ' unverified' : ''}`);
   b.append(k.kw);
   if (k.tier) b.appendChild(el('span', DEMAND_MARK[k.tier], 'demand'));
+  // imp = how often vaxaura.com was shown on Google for this search (Search Console, when set up).
+  if (k.console?.impressions) b.appendChild(el('span', `${k.console.impressions} imp`, 'imp'));
   if (onPick) { b.type = 'button'; b.addEventListener('click', () => onPick(k)); }
   return b;
+}
+// Search Console's answer for the candidates, kept on the market object the writer and the review page use.
+function applyConsole(market, c) {
+  if (!market || !c) return;
+  market.console = { setup: !!c.setup, days: c.days || 90, site: c.site || '' };
+  for (const k of market.keywords || []) k.console = c.stats?.[k.kw] || null;
 }
 
 // Keyword candidates with their standing against the shop: free, overlap (a shorter or longer form is
@@ -738,6 +753,8 @@ function renderKeywordReport(box, market, onPick) {
   }
   const verified = pool.filter((k) => k.searched === true).length, unsearched = pool.filter((k) => k.searched === false).length;
   box.appendChild(el('p', `${pool.length - overlaps.length} free · ${overlaps.length} overlapping · ${taken.length} taken by other products · ${verified} checked with Google${unsearched ? ` · ${unsearched} not a Google search (crossed out)` : ''} · ▲▲▲ high, ▲▲ medium, ▲ low demand`, 'kw-legend'));
+  if (market?.console?.setup === false) box.appendChild(el('p', 'Search Console is not connected (free): with it every chip would also show how often vaxaura.com was really shown on Google for that search. See README → Search Console.', 'kw-legend'));
+  else if (market?.console?.setup) box.appendChild(el('p', `imp = how often vaxaura.com was shown on Google for that search in the last ${market.console.days || 90} days (Search Console)`, 'kw-legend'));
 }
 
 // The research screen (step 2): what was identified, the keyword standing and the market evidence,
@@ -1313,7 +1330,7 @@ function keywordPanel(k, id) {
   if (k.secondary.length) { kw.append(' ', el('strong', 'Secondary: ')); for (const x of k.secondary) kw.append(el('span', x, 'kw-tag'), ' '); }
   box.appendChild(kw);
   box.appendChild(pills(k.summary));
-  for (const g of ['URL', 'Keyword', 'Placement', 'Cannibalization']) {
+  for (const g of ['URL', 'Keyword', 'Placement', 'Cannibalization', 'Search Console']) {
     const list = k.checks.filter((c) => c.group === g);
     if (!list.length) continue;
     const bad = list.filter((c) => c.status !== 'pass').length;
@@ -1329,6 +1346,20 @@ function keywordPanel(k, id) {
       const current = x.kw === k.focus;
       const c = keywordChip(x, { tag: id && !current ? 'button' : 'span', extra: (id && !current ? '' : 'static') + (current ? ' on' : ''), onPick: id && !current ? () => openFix(id, x.kw) : null });
       c.title = demandText(x);
+      chips.appendChild(c);
+    }
+    box.appendChild(chips);
+  }
+  // Search Console: the searches this page is already shown for (real demand it has today).
+  if (k.console?.rows?.length) {
+    box.appendChild(el('p', `Searches this page is already shown for on Google (Search Console, last 90 days: impressions · average position)${id ? '; click one to preview it as the focus keyword' : ''}:`, 'small muted'));
+    const chips = el('div', null, 'kw-chips');
+    for (const r of k.console.rows) {
+      const current = r.kw === k.focus;
+      const c = el(id && !current ? 'button' : 'span', null, 'kw-chip' + (id && !current ? '' : ' static') + (current ? ' on' : ''));
+      c.append(r.kw, el('span', `${r.impressions} imp · pos ${r.position}`, 'imp'));
+      c.title = `${r.impressions} impressions, ${r.clicks} clicks, average position ${r.position}`;
+      if (id && !current) { c.type = 'button'; c.addEventListener('click', () => openFix(id, r.kw)); }
       chips.appendChild(c);
     }
     box.appendChild(chips);
@@ -1469,6 +1500,29 @@ async function checkKw(value) {
   } catch (err) { if (seq === kwcSeq) $('#kwc-status').textContent = err.message; }
 }
 $('#kwc-form').addEventListener('submit', (e) => { e.preventDefault(); checkKw($('#kwc-input').value); });
+
+// Search Console: the searches the shop is already shown for that no product targets (proven demand).
+$('#console-run')?.addEventListener('click', async () => {
+  const btn = $('#console-run'), box = $('#console-result'), status = $('#console-status');
+  btn.disabled = true; box.innerHTML = ''; status.textContent = 'Reading Search Console…';
+  try {
+    const r = await call('qa', { console: true });
+    status.textContent = '';
+    if (!r.setup) { box.appendChild(el('p', r.how || 'Search Console is not connected.', 'small muted')); return; }
+    if (!r.queries.length) { box.appendChild(el('p', `No free search with impressions yet (${r.total || 0} searches seen in the last ${r.days} days; every one with demand already has a product).`, 'small muted')); return; }
+    box.appendChild(el('p', `${r.queries.length} searches vaxaura.com was shown for in the last ${r.days} days that no product targets (${r.site}). Click one to check it before using it:`, 'small muted'));
+    const chips = el('div', null, 'kw-chips');
+    for (const q of r.queries) {
+      const c = el('button', null, 'kw-chip free'); c.type = 'button';
+      c.append(q.kw, el('span', `${q.impressions} imp · pos ${q.position}`, 'imp'));
+      c.title = `${q.impressions} impressions, ${q.clicks} clicks, average position ${q.position}`;
+      c.addEventListener('click', () => { $('#kwc-input').value = q.kw; checkKw(q.kw); $('#kwc-form').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+      chips.appendChild(c);
+    }
+    box.appendChild(chips);
+  } catch (err) { status.textContent = err.message; }
+  finally { btn.disabled = false; }
+});
 
 // ---------- keyword fix for a product already in the shop ----------
 // Preview (nothing changes) -> the owner may edit the new values -> Apply (after a confirm) -> Undo.

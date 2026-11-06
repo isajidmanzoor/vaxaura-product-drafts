@@ -947,6 +947,8 @@ function readForm() {
     new_category: n(F('new_category').value), new_category_parent: n(F('new_category_parent').value),
     // The real searches the audit may accept: never a phrase Google does not offer.
     keyword_pool: (state.market?.keywords || []).filter((k) => k.searched !== false).map((k) => k.kw),
+    // Once saved, the product is in the shop itself: the audit must not count it as another product.
+    saved_id: state.saved?.id || null,
     tags: F('tags').value.split(',').map(n).filter(Boolean),
     attributes: F('attributes').value.split('\n').map((l) => l.split(':')).filter((x) => x.length > 1 && n(x[0]))
       .map(([k, ...v]) => ({ name: n(k), options: v.join(':').split(',').map(n).filter(Boolean) })),

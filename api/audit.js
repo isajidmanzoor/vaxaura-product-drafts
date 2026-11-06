@@ -2,10 +2,12 @@ import { route } from '../lib/http.mjs';
 import { seoAudit, shopKeywords, validate, normalizeListing } from '../lib/woo.mjs';
 
 // Live SEO score while the owner edits the listing, with the keyword clashes against the shop.
+// saved_id: the product once it is saved - it is in the shop then, and must not clash with itself.
 export default route('POST', async (req) => {
   const raw = req.body?.product;
   if (!raw || typeof raw !== 'object') throw Object.assign(new Error('No product data was sent.'), { status: 400 });
   const p = normalizeListing(raw);
   p.images = p.images.map((i) => ({ ...i, update_media: true }));
-  return { audit: seoAudit(p, { shop: await shopKeywords() }), errors: validate(p) };
+  const savedId = Number(raw.saved_id) > 0 ? Number(raw.saved_id) : undefined;
+  return { audit: seoAudit(p, { shop: await shopKeywords(savedId) }), errors: validate(p) };
 });

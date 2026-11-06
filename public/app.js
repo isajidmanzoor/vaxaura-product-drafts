@@ -1960,9 +1960,11 @@ function renderStore(r) {
   if (withGoogle) { box.appendChild(indexAll); indexTally(); }
 }
 
-// Google's index status, remembered per URL for the session and asked ten products per request
-// (the host's request limit; 2,000 inspections a day): the page on screen goes first, the rest only on request.
+// Google's index status, remembered per URL for the session and asked six products per request
+// (Google answers three at a time and takes seconds, sometimes a minute, per URL, so small chunks
+// fill the column steadily; 2,000 inspections a day): the page on screen goes first, the rest only on request.
 const INDEX_CACHE = new Map();
+const INDEX_CHUNK = 6;
 const indexQueue = []; // URLs waiting for an inspection, front first
 let indexCtx = null, indexBusy = false; // the report on screen: { allUrls, tile, tableBox }
 function paintIndexCell(td, s) {
@@ -1999,7 +2001,7 @@ async function drainIndex() {
   indexBusy = true;
   try {
     while (indexQueue.length) {
-      const chunk = indexQueue.splice(0, 10);
+      const chunk = indexQueue.splice(0, INDEX_CHUNK);
       let r;
       try { r = await call('qa', { console: { inspect: chunk } }); } catch (err) { r = { error: err.message }; }
       for (const u of chunk) {

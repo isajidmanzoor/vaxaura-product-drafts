@@ -140,10 +140,12 @@ clicks, which means the SEO title and meta description are not earning the click
 
 The **shop report** gets two more columns with it: each product's impressions, clicks and average
 position of the last 28 days (one query for the whole shop) and whether Google has the page in its
-index (asked ten products per request for the 25 products on the page on screen and remembered for
-the session, the whole shop only on request with one button, so a big shop stays within the host's
-limits and Google's 2,000 inspections a day), plus a tile with how many products Google showed at
-all and how many are not indexed.
+index (asked six products per request, three at a time at Google, for the 25 products on the page
+on screen and remembered for the session; the whole shop only on request with one button, so a big
+shop stays within the host's limits and Google's 2,000 inspections a day; Google takes seconds and
+sometimes stalls for a minute on a URL, so a timed-out inspection is tried once more and the ones
+that still fail get a "Retry" button), plus a tile with how many products Google showed at all and
+how many are not indexed.
 
 The report also asks the Sitemaps API which sitemaps Google has for the site, when it last read
 them and how many URLs are indexed; when none is submitted it says so and names the one to submit

@@ -1,7 +1,7 @@
 // Titles are real Daraz.pk search results seen on 2026-10-30.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classify, queryPlan, stats, parseHints, charm, suggestPrice, unsupportedClaims } from '../lib/market.mjs';
+import { classify, queryPlan, stats, parseHints, charm, suggestPrice, unsupportedClaims, formulaic } from '../lib/market.mjs';
 
 const stLondon = { brand: 'ST London', product_type: 'foundation', key_terms: ['matt fusion'] };
 
@@ -94,6 +94,37 @@ test('the broadest search survives when the AI adds its own queries', () => {
   assert.equal(q.length, 6);
   assert.equal(q[0], 'eminent citrus glow face wash');
   assert.equal(q.at(-1), 'eminent face wash');
+});
+
+test('a brand written as one word or two is the same brand (live run: "Garnier SkinActive" found nothing)', () => {
+  const garnier = { brand: 'Garnier SkinActive', product_type: 'face wash', key_terms: ['bright complete', 'vitamin c'] };
+  assert.equal(classify('Garnier Skin Active Bright Complete Vitamin C Face Wash, 100ml - Cleanse, Remove Impurities', garnier), 'exact');
+  // With the line inside the brand, another line of the brand does not carry it; with the brand alone it is "similar".
+  assert.equal(classify('Garnier Fast Clear Facewash For Acne Prone Skin 100ml', garnier), 'different');
+  assert.equal(classify('Garnier Fast Clear Facewash For Acne Prone Skin 100ml', { ...garnier, brand: 'Garnier' }), 'similar');
+  assert.equal(classify('Gluta White Vitamin C Bright Complete Face Wash', garnier), 'different');
+  const loreal = { brand: "L'Oréal", product_type: 'face wash', key_terms: ['glycolic bright'] };
+  assert.equal(classify('L Oreal Paris Glycolic Bright Daily Face Wash 100ml', loreal), 'exact');
+  // The letters must run on from a word start: these are still other brands.
+  assert.equal(classify('STs London Silk Effect Foundation', stLondon), 'different');
+  assert.equal(classify('Sweet Touch London ST Imperfections Eraser Foundation SPF 15', stLondon), 'different');
+});
+
+test('a branded product the stores did not match is priced from the cost, not from other brands', () => {
+  const shop = [{ sale_price: '1545' }, { sale_price: '1199' }, { sale_price: '1999' }];
+  const p = suggestPrice({ shop, hints: { cost: 300 }, branded: true });
+  assert.equal(p.sale, 499); // 300 × 1.6 = 480 → the next 49/99 price
+  assert.match(p.why[0], /your cost \(Rs 300\) plus a 60% margin/);
+  assert.ok(p.regular > p.sale);
+  // Without a cost the category median stays (and says to check the MRP).
+  assert.match(suggestPrice({ shop, hints: {}, branded: true }).why[0], /check the brand's retail price/);
+});
+
+test('marketing filler and the "exclusively" claim are caught', () => {
+  assert.deepEqual(formulaic('<p>Reveal a luminous complexion with our premium face wash, revitalized skin, curated and sold exclusively by Vaxaura.</p>'),
+    ['premium', 'luminous', 'revitalized', 'exclusively', 'curated', 'reveal a']);
+  assert.deepEqual(formulaic('<p>Gold-tone heart pendant with a green stone on a fine chain, for daily wear and Eid gifts.</p>'), []);
+  assert.deepEqual(unsupportedClaims('Sold exclusively by Vaxaura', '').map((c) => c.label), ['exclusive']);
 });
 
 test('reasons read well for a single listing', () => {

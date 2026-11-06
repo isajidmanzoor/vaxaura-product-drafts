@@ -38,9 +38,18 @@ test('a big brand name on a low-priced item gets a brand check in the owner note
   assert.equal(brandCheck("L'Oréal", 1200), ''); // cosmetics brands sell at these prices for real
 });
 
-test('SEO title becomes Title Case, accents and small words kept', () => {
+test('SEO title becomes Title Case, accents, small words and units kept', () => {
   assert.equal(titleCase('black heart pendant Stunning Gold Heart Necklace | Vaxaura'), 'Black Heart Pendant Stunning Gold Heart Necklace | Vaxaura');
   assert.equal(titleCase("glycolic bright face wash – best L'Oréal cleanser for skin"), "Glycolic Bright Face Wash – Best L'Oréal Cleanser for Skin");
+  assert.equal(titleCase('garnier face wash 100ml | best bright complete glow 50g 24k'), 'Garnier Face Wash 100ml | Best Bright Complete Glow 50g 24k'); // live run: "100Ml"
+});
+
+test('a secondary keyword inside the focus keyword (or around it) is dropped: it counts every mention twice', async () => {
+  const { dropNestedSecondaries } = await import('../lib/ai.mjs');
+  assert.deepEqual(dropNestedSecondaries(['garnier face wash 100ml', 'bright complete face wash', 'face wash']), ['garnier face wash 100ml', 'bright complete face wash']);
+  assert.deepEqual(dropNestedSecondaries(['face wash', 'garnier face wash 100ml', 'vitamin c face wash']), ['face wash']);
+  assert.deepEqual(dropNestedSecondaries(['tulip earrings', 'enamel flower earrings', 'tulip pearl stud earrings']), ['tulip earrings', 'enamel flower earrings', 'tulip pearl stud earrings']);
+  assert.deepEqual(dropNestedSecondaries([]), []);
 });
 
 test('duplicate warning', () => {

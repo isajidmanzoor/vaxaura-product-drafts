@@ -49,6 +49,24 @@ test('helpers', () => {
   assert.equal(nextSku('VAX-JR', []), 'VAX-JR01');
 });
 
+test('marketing filler is a warning the repair round gets (advisable), never a blocked save', () => {
+  const p = fixture();
+  const a = seoAudit(p);
+  assert.ok(Array.isArray(a.advisable));
+  assert.ok(!a.fixable.some((x) => x.id === 'qStyle'));
+  p.description = `<p>Reveal a luminous glow with our premium ${p.seo.focus_keyword}.</p>` + p.description;
+  const b = seoAudit(p);
+  const t = byId(b).qStyle;
+  assert.equal(t.pass, false);
+  assert.equal(t.warn, true);
+  assert.match(t.info, /premium/);
+  assert.ok(b.advisable.some((x) => x.id === 'qStyle'));
+  assert.ok(!b.fixable.some((x) => x.id === 'qStyle'));
+  // Other products' names in the "See also" line are not the listing's own words.
+  p.description = fixture().description + '\n<p class="vx-see-also">See also: <a href="https://vaxaura.com/product/x/">Premium Green Jewelry Box</a>.</p>';
+  assert.equal(byId(seoAudit(p)).qStyle.pass, true);
+});
+
 test('a made-up secondary keyword warns but blocks nothing; a made-up focus keyword blocks', () => {
   const p = fixture();
   const pool = ['glycolic bright face wash', 'loreal face wash', 'glycolic face wash', 'face wash for glow'];

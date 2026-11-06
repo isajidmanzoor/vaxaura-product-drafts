@@ -503,9 +503,10 @@ async function run() {
     lap('write', t0);
     stats.firstScore = w.audit.score;
     s.done(`Listing written · SEO ${w.audit.score}/100`);
-    // Up to 2 repair rounds while a test still fails; each round is its own request.
-    for (let round = 1; round <= 2 && w.audit.fixable.length; round++) {
-      const n = w.audit.fixable.length;
+    // Up to 2 repair rounds while a test still fails or a warning (style, keywords) stands; each round is its own request.
+    const open = (a) => a.fixable.length + (a.advisable || []).length;
+    for (let round = 1; round <= 2 && open(w.audit); round++) {
+      const n = open(w.audit);
       s = step(`Improving ${n} SEO check${n > 1 ? 's' : ''} (round ${round})`);
       t0 = Date.now();
       try {
@@ -1022,6 +1023,7 @@ const FIX = {
   qClaims: (t) => `Remove or soften ${t.info} — neither your notes nor the label confirm it (add it to your notes if it is true).`,
   qKwReal: () => 'Nobody searches this exact phrase. Click a real Google search under the focus keyword, then “Fix with AI” to rewrite the title, URL and text around it.',
   qKwSecondary: (t) => `Nobody searches ${t.info.split(', ').map((k) => `“${k}”`).join(' or ')}. Replace it with a real Google search from the chips under the focus keyword, or drop it (saving is not blocked).`,
+  qStyle: (t) => `Marketing filler: ${t.info.split(', ').map((k) => `“${k}”`).join(', ')}. Say what the item is made of, how it looks and who it suits instead (saving is not blocked).`,
   qCannibal: (t) => `Another Vaxaura product targets this keyword (${t.info}), so the two pages would compete on Google. Choose another keyword or click “Fix with AI”.`,
 };
 

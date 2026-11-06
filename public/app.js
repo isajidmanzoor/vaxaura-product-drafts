@@ -277,6 +277,7 @@ document.addEventListener('paste', (e) => {
 });
 
 // The server only fetches the photo and hands it back; it is then prepared here like a photo from the device.
+// For a product page (Daraz, a supplier site) it answers with the addresses of the photos on it instead.
 async function fetchLinkPhoto(url) {
   let res;
   try { res = await fetch('/api/fetch-photo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, raw: true }) }); }
@@ -287,6 +288,7 @@ async function fetchLinkPhoto(url) {
     throw new Error(data.error || `The photo could not be fetched (HTTP ${res.status}).`);
   }
   const type = (res.headers.get('content-type') || 'image/jpeg').split(';')[0];
+  if (type === 'application/json') return (await res.json()).photos || [];
   const name = res.headers.get('x-file-name') || 'linked-photo';
   return new File([await res.blob()], name, { type });
 }
@@ -309,8 +311,17 @@ $('#link-form').addEventListener('submit', async (e) => {
     btn.textContent = 'Adding…';
     btn.setAttribute('aria-label', `Adding photo ${k + 1} of ${links.length}`);
     // Always fetched and prepared here like a photo from the device, so it is WebP under 100 KB
-    // (and branded when branding is on).
-    try { addFiles([await fetchLinkPhoto(url)]); } catch (err) { failed.push({ url, msg: err.message }); }
+    // (and branded when branding is on). A product page gives its photos, added one by one.
+    try {
+      const got = await fetchLinkPhoto(url);
+      if (got instanceof File) { addFiles([got]); continue; }
+      let added = 0;
+      for (const [i, photo] of got.entries()) {
+        btn.setAttribute('aria-label', `Adding photo ${i + 1} of ${got.length} from the page`);
+        try { const f = await fetchLinkPhoto(photo); if (f instanceof File) { addFiles([f]); added++; } } catch { /* listed on the page but not served */ }
+      }
+      if (!added) throw new Error('No photo on that page could be fetched. Open a photo itself and copy its address.');
+    } catch (err) { failed.push({ url, msg: err.message }); }
   }
   btn.disabled = false; btn.textContent = 'Add'; btn.removeAttribute('aria-label');
   input.value = failed.map((f) => f.url).join(' ');

@@ -20,11 +20,36 @@ export function photoType(headerType, buf) {
   const alias = { 'image/jpg': 'image/jpeg', 'image/pjpeg': 'image/jpeg', 'image/x-png': 'image/png' }[raw] || raw;
   return TYPES[alias] && looksLike(alias, buf) ? alias : null;
 }
-// Worth downloading at all? Pages (text/html) and scripts are refused before their body is read.
+// Worth downloading at all? Pages are read for their photos (isPage); scripts and the rest are refused.
 export const mayBePhoto = (headerType) => {
   const raw = String(headerType || '').split(';')[0].trim().toLowerCase();
   return raw === '' || raw.startsWith('image/') || raw === 'application/octet-stream' || raw === 'binary/octet-stream';
 };
+export const isPage = (headerType) => /^(text\/html|application\/xhtml\+xml)$/.test(String(headerType || '').split(';')[0].trim().toLowerCase());
+const PAGE_MAX = 3 * 1024 * 1024;
+export const PAGE_PHOTOS = 6;
+
+// The product photos on a shop page (Daraz, a supplier site...): the page's og:image first, then
+// every JPG/PNG/WebP address in the page, with Daraz's resized copies ("...jpg_720x720q80.jpg")
+// folded into the original and logos, icons and sprites left out. At most PAGE_PHOTOS, in page order.
+export function pagePhotos(html, pageUrl) {
+  const text = String(html || '').replace(/\\\//g, '/').replace(/&amp;/g, '&');
+  const found = [];
+  const add = (raw) => {
+    let u = raw.trim();
+    if (u.startsWith('//')) u = 'https:' + u;
+    else if (!/^https?:\/\//i.test(u)) { try { u = new URL(u, pageUrl).href; } catch { return; } }
+    u = u.replace(/\.(jpe?g|png|webp)_\d+x\d+q\d+\.(?:jpe?g|png|webp)$/i, '.$1'); // Daraz resized copy -> original
+    if (/(^|[/_.-])(logo|icon|favicon|sprite|badge|flag|avatar|banner|placeholder|loading|blank|pixel)([/_.-]|$)/i.test(u.split('?')[0])) return;
+    if (!/\.(jpe?g|png|webp)(\?|$)/i.test(u)) return;
+    if (!found.includes(u)) found.push(u);
+  };
+  for (const m of text.matchAll(/<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)(?::secure_url)?["'][^>]+content=["']([^"']+)["']/gi)) add(m[1]);
+  for (const m of text.matchAll(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:image|twitter:image)(?::secure_url)?["']/gi)) add(m[1]);
+  for (const m of text.matchAll(/(?:https?:)?\/\/[^\s"'<>()\\]+?\.(?:jpe?g|png|webp)(?:_\d+x\d+q\d+\.(?:jpe?g|png|webp))?(?:\?[^\s"'<>()\\]*)?(?=["'\s<>()\\,]|$)/gi)) add(m[0]);
+  for (const m of text.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)) add(m[1]); // relative addresses too
+  return found.slice(0, PAGE_PHOTOS);
+}
 
 export function isPrivate(ip) {
   if (net.isIPv4(ip)) {
@@ -49,13 +74,22 @@ export default route('POST', async (req, reply) => {
   let res;
   for (let hop = 0; hop < 4; hop++) {
     await assertPublic(url);
-    res = await fetch(url, { redirect: 'manual', headers: { 'User-Agent': 'Mozilla/5.0 VaxauraProductDrafts', Accept: 'image/*' }, signal: AbortSignal.timeout(20000) });
+    res = await fetch(url, { redirect: 'manual', headers: { 'User-Agent': 'Mozilla/5.0 VaxauraProductDrafts', Accept: 'image/*, text/html;q=0.8' }, signal: AbortSignal.timeout(20000) });
     if (![301, 302, 303, 307, 308].includes(res.status)) break;
     url = new URL(res.headers.get('location'), url);
   }
   if (!res.ok) throw Object.assign(new Error(`The website answered with an error (HTTP ${res.status}).`), { status: 400 });
   const header = res.headers.get('content-type') || '';
   const notPhoto = () => Object.assign(new Error(`The link is not a JPG/PNG/WebP photo (${header.split(';')[0].trim() || 'unknown type'}). Open the photo itself and copy its address.`), { status: 400 });
+  if (isPage(header)) {
+    // A product page: answer with the photos on it; the browser then adds each one like a photo link.
+    if (Number(res.headers.get('content-length') || 0) > PAGE_MAX) throw Object.assign(new Error('That page is too big to read.'), { status: 413 });
+    const html = Buffer.from(await res.arrayBuffer());
+    if (html.length > PAGE_MAX) throw Object.assign(new Error('That page is too big to read.'), { status: 413 });
+    const photos = pagePhotos(html.toString('utf8'), url.href);
+    if (!photos.length) throw Object.assign(new Error('No product photo was found on that page. Open a photo itself and copy its address.'), { status: 400 });
+    return { page: url.href, photos };
+  }
   if (!mayBePhoto(header)) throw notPhoto();
   if (Number(res.headers.get('content-length') || 0) > MAX) throw Object.assign(new Error('The photo is larger than 8 MB.'), { status: 413 });
   const buf = Buffer.from(await res.arrayBuffer());

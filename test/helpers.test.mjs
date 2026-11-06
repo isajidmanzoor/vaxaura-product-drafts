@@ -1,6 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isPrivate, photoType, mayBePhoto } from '../api/fetch-photo.js';
+import { isPrivate, photoType, mayBePhoto, isPage, pagePhotos, PAGE_PHOTOS } from '../api/fetch-photo.js';
+
+test('a product page gives its photos: og:image first, Daraz resized copies folded, logos left out', () => {
+  const html = `<!doctype html><html><head><title>Garnier Face Wash | Daraz.pk</title>
+    <meta property="og:image" content="https://laz-img-sg.alicdn.com/p/39243b91b8cc1fc204d6fdee175787b9.jpg">
+    <link rel="icon" href="https://img.drz.lazcdn.com/static/pk/favicon.png"></head><body>
+    <img src="https://img.drz.lazcdn.com/g/tps/images/ims-web/logo-daraz.png">
+    <script>window.__data={"images":[{"url":"https:\\/\\/img.drz.lazcdn.com\\/static\\/pk\\/p\\/017ec8b93cab70837ad51a1acc542031.jpg_120x120q80.jpg"},
+      {"url":"https:\\/\\/img.drz.lazcdn.com\\/static\\/pk\\/p\\/017ec8b93cab70837ad51a1acc542031.jpg_720x720q80.jpg"},
+      {"url":"https:\\/\\/img.drz.lazcdn.com\\/static\\/pk\\/p\\/47744ac0f53d4415d306b65dffde34af.jpg_720x720q80.jpg"}]}</script>
+    <img src="//cdn.example.com/photos/side.webp?v=2"> <img src="/media/back.png"> <img src="https://x.com/sprite.png">
+    </body></html>`;
+  assert.deepEqual(pagePhotos(html, 'https://www.daraz.pk/products/x.html'), [
+    'https://laz-img-sg.alicdn.com/p/39243b91b8cc1fc204d6fdee175787b9.jpg',
+    'https://img.drz.lazcdn.com/static/pk/p/017ec8b93cab70837ad51a1acc542031.jpg',
+    'https://img.drz.lazcdn.com/static/pk/p/47744ac0f53d4415d306b65dffde34af.jpg',
+    'https://cdn.example.com/photos/side.webp?v=2',
+    'https://www.daraz.pk/media/back.png',
+  ]);
+  const many = Array.from({ length: 10 }, (_, i) => `<img src="https://s.com/p${i}.jpg">`).join('');
+  assert.equal(pagePhotos(many, 'https://s.com/').length, PAGE_PHOTOS);
+  assert.deepEqual(pagePhotos('<html><body>no photos</body></html>', 'https://s.com/'), []);
+  assert.equal(isPage('text/html; charset=utf-8'), true);
+  assert.equal(isPage('image/jpg'), false);
+});
 import { titleCase } from '../lib/ai.mjs';
 import { possibleDuplicates, relatedProducts, withSeeAlso, stripSeeAlso } from '../lib/woo.mjs';
 

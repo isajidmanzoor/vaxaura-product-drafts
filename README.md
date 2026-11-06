@@ -9,8 +9,10 @@ desktops (review form with a sticky score card), in light and dark mode.
 
 ## What it does
 
-1. **Photos**: from the phone/computer, pasted with Ctrl+V, or from photo links (supplier site,
-   Daraz, any public image; the server downloads them and refuses internal addresses). The browser
+1. **Photos**: from the phone/computer, pasted with Ctrl+V, or from links: a photo's address, or a
+   product page (Daraz, a supplier site) whose photos are read off the page (og:image first, up to
+   six, Daraz's resized copies folded into the original; the server downloads them and refuses
+   internal addresses). The browser
    adds the Vaxaura branding and saves every photo as WebP under 100 KB (largest size and quality
    that fit, at most 1600 px). They go to the WordPress Media Library; the first is the featured image.
    vaxaura.com saves every upload again at its own quality (a 95 KB photo became 106–193 KB), so the

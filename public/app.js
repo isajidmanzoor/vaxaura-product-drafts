@@ -1808,6 +1808,15 @@ function renderStore(r) {
   if (indexTile) { indexTile.append(el('strong', '…'), el('span', 'products not in Google’s index (checking…)')); tiles.appendChild(indexTile); }
   box.appendChild(tiles);
   box.appendChild(el('p', `Report from ${new Date(r.at).toLocaleString()}.${r.console?.ok ? ` Google numbers: ${r.console.range?.startDate} to ${r.console.range?.endDate} (Search Console publishes two days late).` : r.console?.setup === false ? ' Connect Search Console (free) to see each product’s impressions, clicks, position and index status here.' : ''}`, 'small muted'));
+  // The sitemaps Google has for the site: products "unknown to Google" usually trace back to a sitemap never submitted or not read yet.
+  if (r.console?.setup && Array.isArray(r.console.sitemaps)) {
+    const maps = r.console.sitemaps;
+    const day = (d) => (d ? String(d).slice(0, 10) : 'never');
+    const p = el('p', null, 'small muted');
+    if (!maps.length) p.append(el('strong', 'No sitemap submitted to Google. '), 'Submit ', el('code', 'https://vaxaura.com/sitemap_index.xml'), ' in Search Console → Sitemaps; until then Google finds new products only by chance.');
+    else p.append('Sitemaps Google has: ', maps.map((m) => `${m.path.replace(/^https?:\/\/[^/]+/, '')} (submitted ${day(m.lastSubmitted)}, last read ${day(m.lastDownloaded)}${m.submitted ? `, ${m.indexed} of ${m.submitted} URLs indexed` : ''}${m.errors ? `, ${m.errors} errors` : ''}${m.pending ? ', not read yet' : ''})`).join(' · '), '. A product “unknown to Google” is in the sitemap but not crawled yet: for the important ones use “Request indexing” on its URL in Search Console.');
+    box.appendChild(p);
+  }
 
   if (r.clashes.length) {
     box.appendChild(el('h3', 'Keyword cannibalization'));

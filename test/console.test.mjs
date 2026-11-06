@@ -222,6 +222,35 @@ test('index status in chunks: at most ten URLs per call, errors kept per URL', a
   forgetConsole();
 });
 
+test('the sitemaps Google has: submitted, last read, indexed counts (Sitemaps API)', async () => {
+  forgetConsole();
+  const { sitemapsSummary, sitemapsStatus } = await import('../lib/console.mjs');
+  const j = { sitemap: [
+    { path: 'https://vaxaura.com/sitemap_index.xml', lastSubmitted: '2026-10-29T10:00:00.000Z', lastDownloaded: '2026-11-05T02:00:00.000Z', isPending: false, isSitemapsIndex: true, errors: '0', warnings: '0', contents: [{ type: 'web', submitted: '56', indexed: '21' }] },
+    { path: 'https://vaxaura.com/old-sitemap.xml', isPending: true, isSitemapsIndex: false, errors: '2', warnings: '0', contents: [] },
+  ] };
+  const s = sitemapsSummary(j);
+  assert.deepEqual(s[0], { path: 'https://vaxaura.com/sitemap_index.xml', lastSubmitted: '2026-10-29T10:00:00.000Z', lastDownloaded: '2026-11-05T02:00:00.000Z', pending: false, index: true, errors: 0, warnings: 0, submitted: 56, indexed: 21 });
+  assert.deepEqual([s[1].pending, s[1].errors, s[1].submitted], [true, 2, 0]);
+  assert.deepEqual(sitemapsSummary({}), []);
+  let calls = 0;
+  const fetchFn = async (u) => {
+    calls++;
+    const json = (status, data) => ({ ok: status < 300, status, json: async () => data });
+    if (u === acct.token_uri) return json(200, { access_token: 't', expires_in: 3600 });
+    if (u.includes(encodeURIComponent('sc-domain:vaxaura.com'))) return json(403, { error: { message: 'no' } });
+    assert.match(u, /\/sites\/https%3A%2F%2Fvaxaura\.com%2F\/sitemaps$/);
+    return json(200, j);
+  };
+  const r = await sitemapsStatus({ env, fetchFn, now: Date.UTC(2026, 10, 6) });
+  assert.equal(r.site, 'https://vaxaura.com/');
+  assert.equal(r.sitemaps.length, 2);
+  await sitemapsStatus({ env, fetchFn, now: Date.UTC(2026, 10, 6) + 1000 });
+  assert.equal(calls, 3, 'remembered');
+  assert.equal(await sitemapsStatus({ env: {}, fetchFn }), null);
+  forgetConsole();
+});
+
 test('the product sitemap says whether a product can be found at all (no Search Console needed)', async () => {
   forgetSitemap();
   let calls = 0;

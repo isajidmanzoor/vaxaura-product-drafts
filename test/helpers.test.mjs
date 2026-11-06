@@ -28,6 +28,16 @@ test('a photo link is judged by its bytes: Daraz’s "image/jpg" and octet-strea
   assert.equal(mayBePhoto('text/html; charset=utf-8'), false);
 });
 
+test('a big brand name on a low-priced item gets a brand check in the owner note (live run: Rs 2,349 "Emporio Armani")', async () => {
+  const { brandCheck } = await import('../lib/ai.mjs');
+  assert.match(brandCheck('Emporio Armani', 3300), /BRAND CHECK: "Emporio Armani" is printed on the item and the price is Rs 3300/);
+  assert.match(brandCheck('Tissot', 7499), /Tissot-style/);
+  assert.equal(brandCheck('Emporio Armani', 45000), ''); // a price a genuine one could have
+  assert.equal(brandCheck('Ticarto', 2349), ''); // not a brand whose genuine price is far higher
+  assert.equal(brandCheck('', 500), '');
+  assert.equal(brandCheck("L'Oréal", 1200), ''); // cosmetics brands sell at these prices for real
+});
+
 test('SEO title becomes Title Case, accents and small words kept', () => {
   assert.equal(titleCase('black heart pendant Stunning Gold Heart Necklace | Vaxaura'), 'Black Heart Pendant Stunning Gold Heart Necklace | Vaxaura');
   assert.equal(titleCase("glycolic bright face wash – best L'Oréal cleanser for skin"), "Glycolic Bright Face Wash – Best L'Oréal Cleanser for Skin");

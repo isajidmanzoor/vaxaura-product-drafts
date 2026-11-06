@@ -5,7 +5,7 @@ const SCREENS = ['login', 'photos', 'progress', 'review', 'done', 'qa'];
 const STEP_ORDER = ['photos', 'progress', 'review', 'done'];
 
 // items: photos in order; each keeps its Media Library upload (media) once uploaded, so reordering is free.
-const state = { items: [], media: [], notes: '', sources: [], market: null, facts: '', product: null, ctx: null, hints: '', warnings: [], dirty: false, saved: null, photoKey: '', stats: null };
+const state = { items: [], media: [], notes: '', sources: [], market: null, facts: '', product: null, ctx: null, hints: '', warnings: [], dirty: false, saved: null, photoKey: '', stats: null, research: null, researchKey: '' };
 
 // Each screen is a browser history entry, so the phone's Back button moves between steps.
 let view = null;
@@ -427,10 +427,11 @@ function startTimer() {
   return () => clearInterval(ticker);
 }
 
-let running = false;
+let running = false, autoRetried = false, retryTimer = null;
 async function run() {
   if (running) return;
   running = true;
+  clearTimeout(retryTimer);
   show('progress');
   $('#steps').innerHTML = ''; $('#progress-error').textContent = ''; $('#progress-actions').hidden = true;
   if ($('#research-live')) $('#research-live').hidden = true; // missing on a page cached before the research panel existed
@@ -469,21 +470,31 @@ async function run() {
     state.media = state.items.map((it) => it.media);
     const mediaIds = state.media.map((m) => m.id);
 
-    s = step('Identifying the product and researching the Pakistani market');
-    t0 = Date.now();
-    const r = await call('research', { mediaIds, hints: state.hints });
-    lap('research', t0);
-    Object.assign(state, { notes: r.notes, sources: r.sources, market: r.market, facts: r.facts });
-    renderResearchLive(r); // the research screen shows the findings while the listing is written
-    // Search Console (free, when set up): how often Google already showed the shop for each candidate,
-    // before the listing is written - real numbers next to autocomplete's demand tiers.
-    if (r.market?.keywords?.length) {
-      try { applyConsole(state.market, await call('qa', { console: { keywords: r.market.keywords.map((k) => k.kw) } })); renderResearchLive(r); }
-      catch { /* the autocomplete evidence stands */ }
+    // A retry after a failure (the AI busy, vaxaura.com refusing a burst) reuses the research when the
+    // photos and notes have not changed: researching again costs a minute and free AI quota for nothing.
+    const researchKey = `${mediaIds.join(',')}|${state.hints}`;
+    let r = state.research && state.researchKey === researchKey ? state.research : null;
+    if (r) {
+      s = step('Research reused (same photos and notes)');
+      renderResearchLive(r);
+      s.done(`Research reused · ${r.market?.keywords?.length || 0} real search keywords`);
+    } else {
+      s = step('Identifying the product and researching the Pakistani market');
+      t0 = Date.now();
+      r = await call('research', { mediaIds, hints: state.hints });
+      lap('research', t0);
+      Object.assign(state, { notes: r.notes, sources: r.sources, market: r.market, facts: r.facts, research: r, researchKey });
+      renderResearchLive(r); // the research screen shows the findings while the listing is written
+      // Search Console (free, when set up): how often Google already showed the shop for each candidate,
+      // before the listing is written - real numbers next to autocomplete's demand tiers.
+      if (r.market?.keywords?.length) {
+        try { applyConsole(state.market, await call('qa', { console: { keywords: r.market.keywords.map((k) => k.kw) } })); renderResearchLive(r); }
+        catch { /* the autocomplete evidence stands */ }
+      }
+      const ex = r.market?.exact.length || 0, si = r.market?.similar.length || 0;
+      const cat = r.market?.categories?.length ? '' : r.market?.newCategory ? ` · new category: ${r.market.newCategory}` : '';
+      s.done(`Identified: ${r.identification?.product || 'product'}${r.identification?.brand ? ` (${r.identification.brand})` : ''} · Daraz + Naheed: ${ex} same, ${si} similar of ${r.market?.total ?? 0} · ${r.market?.keywords?.length || 0} real search keywords${cat}`);
     }
-    const ex = r.market?.exact.length || 0, si = r.market?.similar.length || 0;
-    const cat = r.market?.categories?.length ? '' : r.market?.newCategory ? ` · new category: ${r.market.newCategory}` : '';
-    s.done(`Identified: ${r.identification?.product || 'product'}${r.identification?.brand ? ` (${r.identification.brand})` : ''} · Daraz + Naheed: ${ex} same, ${si} similar of ${r.market?.total ?? 0} · ${r.market?.keywords?.length || 0} real search keywords${cat}`);
 
     s = step('Writing the SEO listing');
     t0 = Date.now();
@@ -521,11 +532,18 @@ async function run() {
     renderWarnings();
     $('#review-time').textContent = `Ready in ${Math.round((Date.now() - started) / 1000)} s.`;
     state.dirty = true;
+    autoRetried = false;
     show('review');
   } catch (err) {
     s?.fail();
     $('#progress-error').textContent = err.message;
     $('#progress-actions').hidden = false;
+    // vaxaura.com refuses bursts for about a minute: one automatic retry after it (research reused).
+    if (/refusing requests/.test(err.message) && !autoRetried) {
+      autoRetried = true;
+      $('#progress-error').textContent = `${err.message} Trying again automatically in 60 seconds…`;
+      retryTimer = setTimeout(run, 60000);
+    }
   } finally {
     stop();
     running = false;
@@ -538,7 +556,7 @@ $('#analyze').addEventListener('click', (e) => {
   else run();
 });
 $('#retry').addEventListener('click', run);
-$('#back').addEventListener('click', () => show('photos'));
+$('#back').addEventListener('click', () => { clearTimeout(retryTimer); show('photos'); });
 $('#review-back').addEventListener('click', () => show('photos'));
 $('#to-review').addEventListener('click', () => show('review'));
 $('#done-back').addEventListener('click', () => show('review'));
@@ -1900,7 +1918,7 @@ function renderHistory() {
 
 async function resetWork() {
   for (const it of state.items) { setPreview(it, null); if (it.url?.startsWith("blob:")) URL.revokeObjectURL(it.url); }
-  Object.assign(state, { items: [], media: [], notes: '', sources: [], market: null, facts: '', product: null, warnings: [], dirty: false, saved: null, photoKey: '', stats: null });
+  Object.assign(state, { items: [], media: [], notes: '', sources: [], market: null, facts: '', product: null, warnings: [], dirty: false, saved: null, photoKey: '', stats: null, research: null, researchKey: '' });
   $('#hints').value = ''; $('#link').value = ''; $('#link-error').textContent = '';
   $('#restored').hidden = true;
   await clearKept();

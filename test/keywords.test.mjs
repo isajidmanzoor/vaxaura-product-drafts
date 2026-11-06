@@ -182,6 +182,12 @@ test('QA grading of a product', () => {
   assert.equal(by['In a category'].status, 'pass');
   assert.equal(by['Long description 200+ words'].status, 'pass');
   assert.equal(g.metrics.photos.length, 4);
+  // Internal links: none in this description; a "See also" line with a shop link passes.
+  assert.equal(by['Links to the category or related products'].status, 'warn');
+  const linked = { ...pr, description: pr.description + '<p class="vx-see-also">See also: <a href="https://vaxaura.com/Collections/watches/">Watches</a>, <a href="https://www.daraz.pk/x">Daraz</a>.</p>' };
+  const l = Object.fromEntries(grade(linked, { all: [pr, other], cats, media }).checks.map((c) => [c.label, c]));
+  assert.equal(l['Links to the category or related products'].status, 'pass');
+  assert.equal(l['Links to the category or related products'].info, '1 internal link'); // the Daraz link does not count
 });
 
 // ---------- verified searches and demand ----------

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { pemToDer, signJwt, searchRows, statsByKeyword, freeQueries, pageQueries, dateRange, siteCandidates, account, forgetConsole, keywordStats, opportunities, state, isConfigured } from '../lib/console.mjs';
+import { pemToDer, signJwt, searchRows, statsByKeyword, freeQueries, pageQueries, dateRange, siteCandidates, account, forgetConsole, keywordStats, opportunities, state, isConfigured, indexSummary, inspectUrl, trendRanges, trend, ctrSignal, pageTrend } from '../lib/console.mjs';
 
 // A throw-away RSA key stands in for the service account's key file.
 const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -109,6 +109,77 @@ test('free searches with proven demand: not targeted, product-shaped, enough imp
   assert.deepEqual(free.map((q) => q.kw), ['gold heart pendant', 'watch set for girls']); // no price/pakistan, no brand, no 1-word, no 2-impression search
   assert.deepEqual(free[0], { kw: 'gold heart pendant', impressions: 120, clicks: 1, position: 22 });
   assert.deepEqual(pageQueries(ROWS.slice(0, 2)).map((q) => q.kw), ['couple watches', 'couple watches price in pakistan']);
+});
+
+test('trend ranges: the last 28 days and the 28 before, two days behind today', () => {
+  const r = trendRanges(Date.UTC(2026, 10, 6, 12));
+  assert.deepEqual(r.now, { startDate: '2026-10-08', endDate: '2026-11-04' });
+  assert.deepEqual(r.before, { startDate: '2026-09-10', endDate: '2026-10-07' });
+});
+
+test('click rate and trend are judged from the page totals', () => {
+  assert.equal(ctrSignal({ impressions: 10, clicks: 0 }), null); // too few to judge
+  assert.deepEqual(ctrSignal({ impressions: 100, clicks: 0 }), { ctr: 0, low: true });
+  assert.deepEqual(ctrSignal({ impressions: 200, clicks: 10 }), { ctr: 5, low: false });
+  assert.deepEqual(trend({ impressions: 50, clicks: 1, position: 9 }, { impressions: 100, clicks: 2, position: 12 }).change, -50);
+  assert.equal(trend({ impressions: 5, clicks: 0, position: null }, { impressions: 0, clicks: 0, position: null }).change, null);
+});
+
+test('URL inspection: Google’s verdict, crawl date and canonical, read and remembered', async () => {
+  forgetConsole();
+  const url = 'https://vaxaura.com/product/gold-heart-pendant-vaxaura/';
+  const calls = [];
+  const fetchFn = async (u, init) => {
+    const json = (status, data) => ({ ok: status < 300, status, json: async () => data });
+    if (u === acct.token_uri) { calls.push({ url: u, body: null }); return json(200, { access_token: 't', expires_in: 3600 }); }
+    const body = JSON.parse(init.body);
+    calls.push({ url: u, body });
+    if (body.siteUrl === 'sc-domain:vaxaura.com') return json(403, { error: { message: 'no' } });
+    return json(200, { inspectionResult: { inspectionResultLink: 'https://search.google.com/x', indexStatusResult: {
+      verdict: 'PASS', coverageState: 'Submitted and indexed', robotsTxtState: 'ALLOWED', indexingState: 'INDEXING_ALLOWED',
+      lastCrawlTime: '2026-11-03T10:11:12Z', pageFetchState: 'SUCCESSFUL', googleCanonical: url, userCanonical: url } } });
+  };
+  const r = await inspectUrl(url, { env, fetchFn, now: Date.UTC(2026, 10, 6) });
+  assert.equal(r.indexed, true);
+  assert.equal(r.coverage, 'Submitted and indexed');
+  assert.equal(r.robots, 'ALLOWED');
+  assert.equal(r.lastCrawl, '2026-11-03T10:11:12Z');
+  assert.equal(r.googleCanonical, url);
+  assert.equal(r.link, 'https://search.google.com/x');
+  const inspect = calls.filter((c) => c.url.includes('urlInspection'));
+  assert.equal(inspect.length, 2); // the domain property refused, the URL prefix answered
+  assert.deepEqual(inspect[1].body, { inspectionUrl: url, siteUrl: 'https://vaxaura.com/', languageCode: 'en-US' });
+  await inspectUrl(url, { env, fetchFn, now: Date.UTC(2026, 10, 6) + 1000 });
+  assert.equal(calls.length, 3, 'remembered: no new request');
+  // An unindexed page.
+  assert.deepEqual(indexSummary({ inspectionResult: { indexStatusResult: { verdict: 'NEUTRAL', coverageState: 'Discovered - currently not indexed' } } }).indexed, false);
+  assert.equal(indexSummary({}).verdict, 'VERDICT_UNSPECIFIED');
+  forgetConsole();
+});
+
+test('page trend: two totals queries for the page, last 28 days and the 28 before', async () => {
+  forgetConsole();
+  const url = 'https://vaxaura.com/product/x/';
+  const calls = [];
+  const fetchFn = async (u, init) => {
+    const json = (status, data) => ({ ok: status < 300, status, json: async () => data });
+    if (u === acct.token_uri) return json(200, { access_token: 't', expires_in: 3600 });
+    const body = JSON.parse(init.body);
+    calls.push(body);
+    if (u.includes(encodeURIComponent('sc-domain:vaxaura.com'))) return json(403, { error: { message: 'no' } });
+    return json(200, { rows: [body.startDate === '2026-10-08' ? { clicks: 1, impressions: 40, ctr: 0.025, position: 9.4 } : { clicks: 3, impressions: 80, ctr: 0.0375, position: 12.2 }] });
+  };
+  const t = await pageTrend(url, { env, fetchFn, now: Date.UTC(2026, 10, 6, 12) });
+  assert.deepEqual(t.now, { impressions: 40, clicks: 1, position: 9.4 });
+  assert.deepEqual(t.before, { impressions: 80, clicks: 3, position: 12.2 });
+  assert.equal(t.change, -50);
+  assert.equal(t.days, 28);
+  // Three analytics requests: the domain property refused the first range, then the URL prefix answered both.
+  const ok = calls.filter((b) => b.dimensions.length === 0);
+  assert.equal(ok.length, 3);
+  assert.ok(ok.every((b) => b.dimensionFilterGroups[0].filters[0].expression === url && b.rowLimit === 1));
+  assert.deepEqual([...new Set(ok.map((b) => `${b.startDate}..${b.endDate}`))].sort(), ['2026-09-10..2026-10-07', '2026-10-08..2026-11-04']);
+  forgetConsole();
 });
 
 test('without the secret the routes answer "not set up" and never call Google', async () => {

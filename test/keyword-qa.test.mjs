@@ -138,6 +138,37 @@ test('keyword & URL QA with Search Console: impressions of the focus keyword, th
   assert.equal(byLabel(down.checks)['Search Console answered'].status, 'warn');
 });
 
+test('keyword & URL QA: Google’s index, click rate and trend of a live page; a draft is not inspected', async () => {
+  const watch = product(536, 'Leopard Couple Watches Black Metal – Skeleton Dial Watch Set', 'couple-watches-black-metal-vaxaura', 'couple watches black metal', 'publish', 141);
+  const draft = product(900, 'Couple Watch Draft', 'couple-watch-draft', 'couple watch draft', 'draft', 141);
+  const url = `${SITE}/product/couple-watches-black-metal-vaxaura/`;
+  const inspected = [];
+  const gsc = {
+    pageStats: async () => [], keywordStats: async () => ({ setup: true, stats: {} }),
+    inspect: async (u) => { inspected.push(u); return { indexed: false, verdict: 'NEUTRAL', coverage: 'Discovered - currently not indexed', robots: 'ALLOWED', lastCrawl: null, googleCanonical: 'https://vaxaura.com/product/other/' }; },
+    trend: async () => ({ now: { impressions: 120, clicks: 0, position: 14.2 }, before: { impressions: 200, clicks: 4, position: 11 }, change: -40, days: 28 }),
+  };
+  const k = await keywordQa(watch, [watch, draft], cats, { suggest, site: SITE, console: gsc });
+  const c = byLabel(k.checks);
+  assert.deepEqual(inspected, [url]);
+  assert.equal(c['In Google’s index'].status, 'warn');
+  assert.match(c['In Google’s index'].info, /Discovered - currently not indexed; not crawled yet/);
+  assert.equal(c['Crawling allowed (robots.txt)'].status, 'pass');
+  assert.equal(c['Google treats this page as the canonical'].status, 'warn');
+  assert.match(c['Google treats this page as the canonical'].info, /Google chose https:\/\/vaxaura\.com\/product\/other\//);
+  assert.equal(c['Clicks for the impressions (last 28 days)'].status, 'warn');
+  assert.match(c['Clicks for the impressions (last 28 days)'].info, /120 impressions, 0 clicks \(0% click rate\): rewrite/);
+  assert.equal(c['Impressions, last 28 days against the 28 before'].status, 'warn');
+  assert.match(c['Impressions, last 28 days against the 28 before'].info, /200 → 120 \(-40%\), average position 14\.2/);
+  assert.equal(k.console.index.indexed, false);
+  assert.equal(k.console.trend.change, -40);
+  // A draft has no public URL: no inspection, one reminder.
+  const d = await keywordQa(draft, [watch, draft], cats, { suggest, site: SITE, console: gsc });
+  assert.equal(inspected.length, 1);
+  assert.match(byLabel(d.checks)['In Google’s index'].info, /draft is not public yet/);
+  assert.equal(d.console.trend, null);
+});
+
 test('cannibalization report: groups, keeper and a different free keyword for each other product', async () => {
   const all = [
     product(374, 'Emerald Heart Pendant – Heart Pendant', 'emerald-heart-pendant-heart-pendant', 'heart pendant'),

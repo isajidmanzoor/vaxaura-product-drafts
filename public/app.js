@@ -1330,7 +1330,7 @@ function keywordPanel(k, id) {
   if (k.secondary.length) { kw.append(' ', el('strong', 'Secondary: ')); for (const x of k.secondary) kw.append(el('span', x, 'kw-tag'), ' '); }
   box.appendChild(kw);
   box.appendChild(pills(k.summary));
-  for (const g of ['URL', 'Keyword', 'Placement', 'Cannibalization', 'Search Console']) {
+  for (const g of ['URL', 'Keyword', 'Placement', 'Cannibalization', 'Search Console', 'Google index']) {
     const list = k.checks.filter((c) => c.group === g);
     if (!list.length) continue;
     const bad = list.filter((c) => c.status !== 'pass').length;

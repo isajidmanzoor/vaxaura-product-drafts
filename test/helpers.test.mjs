@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isPrivate } from '../api/fetch-photo.js';
 import { titleCase } from '../lib/ai.mjs';
-import { possibleDuplicates } from '../lib/woo.mjs';
+import { possibleDuplicates, relatedProducts, withSeeAlso, stripSeeAlso } from '../lib/woo.mjs';
 
 test('photo links may not reach internal addresses', () => {
   for (const ip of ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.5', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1']) {
@@ -41,6 +41,32 @@ test('duplicate warning ignores the words half the shop shares, still catches th
   assert.match(possibleDuplicates('Gold Bow Heart Pendant Necklace – Vaxaura Jewellery', shop)[0], /#253/);
   // Three shared words that are only a small part of the other name (the butterfly necklace) are not enough.
   assert.deepEqual(possibleDuplicates('Gold Pendant Chain', shop), []);
+});
+
+test('"See also": the category page and the two closest live products of the category, never doubled', () => {
+  const ctx = {
+    categories: [
+      { slug: 'watches', name: 'Watches', parent: null, url: 'https://vaxaura.com/Collections/watches/' },
+      { slug: 'couple-watches', name: 'Couple Watches', parent: 'watches', url: 'https://vaxaura.com/Collections/watches/couple-watches/' },
+    ],
+    products: [
+      { id: 591, status: 'publish', name: 'Ticarto Gold Couple Watch Set – Matching Gold Wristwatches', url: 'https://vaxaura.com/product/gold-couple-watch-set-vaxaura/', categories: ['couple-watches', 'watches'] },
+      { id: 587, status: 'publish', name: 'Tissot PRX Couple Watch Set – Silver Dial Wristwatch', url: 'https://vaxaura.com/product/tissot-prx-couple-watch-vaxaura/', categories: ['couple-watches', 'watches'] },
+      { id: 583, status: 'publish', name: 'White Butterfly Pendant – Gold Chain Butterfly Necklace', url: 'https://vaxaura.com/product/white-butterfly-pendant-vaxaura/', categories: ['pendants', 'jewellery'] },
+      { id: 600, status: 'draft', name: 'Ticarto Couple Watch Draft', url: '', categories: ['couple-watches'] },
+      { id: 563, status: 'publish', name: 'Ticarto Couple Watch Silver Black Dial Set – Couple Watches', url: 'https://vaxaura.com/product/ticarto-couple-watch/', categories: ['couple-watches', 'watches'] },
+    ],
+  };
+  const name = 'Ticarto Couple Watch Set – Gold Dial Wristwatch';
+  const related = relatedProducts(name, ['couple-watches', 'watches'], ctx.products);
+  // 591, 587 and 563 each share five words with the name; among equals the newest come first. Drafts and other categories never.
+  assert.deepEqual(related.map((r) => r.id), [591, 587]);
+  const html = withSeeAlso('<p><strong>ticarto couple watch set</strong> in gold.</p>\n', { name, categories: ['couple-watches', 'watches'], ctx });
+  assert.match(html, /<p class="vx-see-also">See also: <a href="https:\/\/vaxaura\.com\/Collections\/watches\/couple-watches\/">Couple Watches<\/a>, <a href="https:\/\/vaxaura\.com\/product\/gold-couple-watch-set-vaxaura\/">Ticarto Gold Couple Watch Set – Matching Gold Wristwatches<\/a>, <a href="https:\/\/vaxaura\.com\/product\/tissot-prx-couple-watch-vaxaura\/">[^<]+<\/a>\.<\/p>$/);
+  assert.equal(withSeeAlso(html, { name, categories: ['couple-watches', 'watches'], ctx }), html, 'applied twice: still one line');
+  assert.equal(stripSeeAlso(html), '<p><strong>ticarto couple watch set</strong> in gold.</p>');
+  // Nothing to link: the description stays as it is.
+  assert.equal(withSeeAlso('<p>x</p>', { name, categories: ['rings'], ctx: { categories: [], products: [] } }), '<p>x</p>');
 });
 
 test('placeholders: 4+ photos use 2-4, fewer photos also place the featured one', async () => {

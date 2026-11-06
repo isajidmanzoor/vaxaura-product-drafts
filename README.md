@@ -132,9 +132,21 @@ Read-only: the account can only read the reports.
    `GSC_SITE` = the property as Search Console names it (`sc-domain:vaxaura.com` or
    `https://vaxaura.com/`); without it the tool tries both. Render/Vercel: the same variables.
 
+With it, every check of a live product also asks Google's **URL Inspection API** (free, 2,000 a
+day) whether the page is in Google's index, when it was last crawled, whether robots.txt allows it
+and which URL Google treats as the canonical - a page that is not indexed cannot rank at all - and
+reads the page's last 28 days against the 28 before (impressions falling, and impressions without
+clicks, which means the SEO title and meta description are not earning the click).
+
 Google publishes the data about two days late; the tool reads the last 90 days and remembers each
 answer for ten minutes. Without the secret everything else works as before and the checks say
 "Search Console not connected".
+
+**Internal links.** Every new listing ends with a "See also" line: the product's category page
+(as the shop names it, e.g. vaxaura.com/Collections/jewellery/pendants/) and the two related live
+products of that category whose names share the most words. Internal links help Google find and
+rank both pages; the line is on the review page, so it can be edited, and the product QA flags
+products that have no internal link at all.
 
 ## Cost
 

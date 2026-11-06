@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { pemToDer, signJwt, searchRows, statsByKeyword, freeQueries, pageQueries, dateRange, siteCandidates, account, forgetConsole, keywordStats, opportunities, state, isConfigured, indexSummary, inspectUrl, trendRanges, trend, ctrSignal, pageTrend } from '../lib/console.mjs';
+import { pemToDer, signJwt, searchRows, statsByKeyword, freeQueries, pageQueries, dateRange, siteCandidates, account, forgetConsole, keywordStats, opportunities, state, isConfigured, indexSummary, inspectUrl, trendRanges, trend, ctrSignal, pageTrend, pageTotals, inspectMany, sitemapUrls, inSitemap, forgetSitemap, pageKey } from '../lib/console.mjs';
 
 // A throw-away RSA key stands in for the service account's key file.
 const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -180,6 +180,60 @@ test('page trend: two totals queries for the page, last 28 days and the 28 befor
   assert.ok(ok.every((b) => b.dimensionFilterGroups[0].filters[0].expression === url && b.rowLimit === 1));
   assert.deepEqual([...new Set(ok.map((b) => `${b.startDate}..${b.endDate}`))].sort(), ['2026-09-10..2026-10-07', '2026-10-08..2026-11-04']);
   forgetConsole();
+});
+
+test('page totals: every page of the shop in one query, keyed without the trailing slash', async () => {
+  forgetConsole();
+  let bodies = [];
+  const fetchFn = async (u, init) => {
+    const json = (status, data) => ({ ok: status < 300, status, json: async () => data });
+    if (u === acct.token_uri) return json(200, { access_token: 't', expires_in: 3600 });
+    const body = JSON.parse(init.body); bodies.push(body);
+    if (u.includes(encodeURIComponent('sc-domain:vaxaura.com'))) return json(403, { error: { message: 'no' } });
+    return json(200, { rows: [{ keys: ['https://vaxaura.com/product/gold-heart-pendant-vaxaura/'], clicks: 4, impressions: 90, ctr: 0.04, position: 11.3 }, { keys: ['https://vaxaura.com/'], clicks: 40, impressions: 100, ctr: 0.4, position: 1.2 }] });
+  };
+  const t = await pageTotals({ env, fetchFn, now: Date.UTC(2026, 10, 6, 12) });
+  assert.equal(t.days, 28);
+  assert.deepEqual(t.range, { startDate: '2026-10-08', endDate: '2026-11-04' });
+  assert.deepEqual(t.pages.get(pageKey('https://vaxaura.com/product/gold-heart-pendant-vaxaura')), { impressions: 90, clicks: 4, position: 11.3 });
+  assert.ok(bodies.every((b) => b.dimensions[0] === 'page'));
+  assert.equal(await pageTotals({ env: {}, fetchFn }), null);
+  forgetConsole();
+});
+
+test('index status in chunks: at most ten URLs per call, errors kept per URL', async () => {
+  forgetConsole();
+  const fetchFn = async (u, init) => {
+    const json = (status, data) => ({ ok: status < 300, status, json: async () => data });
+    if (u === acct.token_uri) return json(200, { access_token: 't', expires_in: 3600 });
+    const body = JSON.parse(init.body);
+    if (body.siteUrl === 'sc-domain:vaxaura.com') return json(403, { error: { message: 'no' } });
+    if (body.inspectionUrl.endsWith('/bad/')) return json(500, { error: { message: 'boom' } });
+    return json(200, { inspectionResult: { indexStatusResult: { verdict: body.inspectionUrl.includes('old') ? 'PASS' : 'NEUTRAL', coverageState: body.inspectionUrl.includes('old') ? 'Submitted and indexed' : 'Discovered - currently not indexed' } } });
+  };
+  const urls = [...Array.from({ length: 12 }, (_, i) => `https://vaxaura.com/product/old-${i}/`), 'https://vaxaura.com/product/bad/'];
+  const r = await inspectMany(urls, { env, fetchFn, now: Date.UTC(2026, 10, 6) });
+  assert.equal(Object.keys(r.results).length, 10, 'ten per call');
+  assert.equal(r.results['https://vaxaura.com/product/old-0/'].indexed, true);
+  const r2 = await inspectMany(['https://vaxaura.com/product/new-1/', 'https://vaxaura.com/product/bad/'], { env, fetchFn, now: Date.UTC(2026, 10, 6) });
+  assert.equal(r2.results['https://vaxaura.com/product/new-1/'].indexed, false);
+  assert.match(r2.results['https://vaxaura.com/product/bad/'].error, /HTTP 500/);
+  assert.deepEqual((await inspectMany(urls, { env: {}, fetchFn })).results, {});
+  forgetConsole();
+});
+
+test('the product sitemap says whether a product can be found at all (no Search Console needed)', async () => {
+  forgetSitemap();
+  let calls = 0;
+  const fetchFn = async (u) => { calls++; assert.equal(u, 'https://vaxaura.com/product-sitemap.xml'); return { ok: true, status: 200, text: async () => '<?xml version="1.0"?><urlset><url><loc>https://vaxaura.com/shop/</loc></url><url><loc> https://vaxaura.com/product/tulip-earrings-vaxaura/ </loc></url></urlset>' }; };
+  const urls = await sitemapUrls('https://vaxaura.com/', { fetchFn });
+  assert.equal(urls.size, 2);
+  assert.deepEqual(await inSitemap('https://vaxaura.com/product/tulip-earrings-vaxaura/', 'https://vaxaura.com', { fetchFn }), { listed: true, total: 2 });
+  assert.deepEqual(await inSitemap('https://vaxaura.com/product/missing/', 'https://vaxaura.com', { fetchFn }), { listed: false, total: 2 });
+  assert.equal(calls, 1, 'read once, remembered');
+  forgetSitemap();
+  await assert.rejects(sitemapUrls('https://vaxaura.com', { fetchFn: async () => ({ ok: false, status: 404 }) }), /HTTP 404/);
+  forgetSitemap();
 });
 
 test('without the secret the routes answer "not set up" and never call Google', async () => {

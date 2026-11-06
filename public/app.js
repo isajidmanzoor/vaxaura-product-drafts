@@ -1531,8 +1531,9 @@ $('#console-run')?.addEventListener('click', async () => {
     const r = await call('qa', { console: true });
     status.textContent = '';
     if (!r.setup) { box.appendChild(el('p', r.how || 'Search Console is not connected.', 'small muted')); return; }
-    if (!r.queries.length) { box.appendChild(el('p', `No free search with impressions yet (${r.total || 0} searches seen in the last ${r.days} days; every one with demand already has a product).`, 'small muted')); return; }
-    box.appendChild(el('p', `${r.queries.length} searches vaxaura.com was shown for in the last ${r.days} days that no product targets (${r.site}). Click one to check it before using it:`, 'small muted'));
+    const through = r.through ? ` Data up to ${r.through}; Google hides rare searches, so a new site shows only a few at first.` : '';
+    if (!r.queries.length) { box.appendChild(el('p', `No free search with impressions yet (${r.total || 0} searches seen in the last ${r.days} days; every one with demand already has a product).${through}`, 'small muted')); return; }
+    box.appendChild(el('p', `${r.queries.length} searches vaxaura.com was shown for in the last ${r.days} days that no product targets (${r.site}).${through} Click one to check it before using it:`, 'small muted'));
     const chips = el('div', null, 'kw-chips');
     for (const q of r.queries) {
       const c = el('button', null, 'kw-chip free'); c.type = 'button';
@@ -1773,7 +1774,7 @@ $('#qa-store-run').addEventListener('click', async () => {
 // Two pages of the shop report as one (the clashes and categories come with the first page).
 function mergeStore(a, b) {
   const t = { ...a.totals };
-  for (const k of ['products', 'scoreSum', 'perfectScore', 'noKeyword', 'photos', 'heavyPhotos', 'skuIssues']) t[k] = (a.totals[k] || 0) + (b.totals[k] || 0);
+  for (const k of ['products', 'scoreSum', 'perfectScore', 'noKeyword', 'photos', 'heavyPhotos', 'skuIssues', 'shown', 'clicked', 'impressions', 'clicks']) t[k] = (a.totals[k] || 0) + (b.totals[k] || 0);
   t.photoMB = Math.round(((a.totals.photoMB || 0) + (b.totals.photoMB || 0)) * 10) / 10;
   t.avgScore = t.products ? Math.round(t.scoreSum / t.products) : 0;
   t.byStatus = { ...a.totals.byStatus };
@@ -1796,13 +1797,17 @@ function renderStore(r) {
     [t.heavyPhotos, `photos over 100 KB of ${t.photos} (${t.photoMB} MB)`, t.heavyPhotos > 0],
     [t.skuIssues, 'SKUs missing or not VAX-XX00', t.skuIssues > 0],
     [t.noKeyword, 'products without a focus keyword', t.noKeyword > 0],
+    // Search Console (when set up): how much of the shop Google is showing at all.
+    ...(r.console?.ok ? [[t.shown || 0, `products Google showed in ${r.console.days} days · ${t.impressions || 0} impressions, ${t.clicks || 0} clicks`, (t.shown || 0) < (t.byStatus?.publish || 0) / 2]] : []),
   ]) {
     const d = el('div', null, 'tile' + (bad ? ' bad' : ''));
     d.append(el('strong', String(v)), el('span', k));
     tiles.appendChild(d);
   }
+  const indexTile = r.console?.setup ? el('div', null, 'tile') : null;
+  if (indexTile) { indexTile.append(el('strong', '…'), el('span', 'products not in Google’s index (checking…)')); tiles.appendChild(indexTile); }
   box.appendChild(tiles);
-  box.appendChild(el('p', `Report from ${new Date(r.at).toLocaleString()}.`, 'small muted'));
+  box.appendChild(el('p', `Report from ${new Date(r.at).toLocaleString()}.${r.console?.ok ? ` Google numbers: ${r.console.range?.startDate} to ${r.console.range?.endDate} (Search Console publishes two days late).` : r.console?.setup === false ? ' Connect Search Console (free) to see each product’s impressions, clicks, position and index status here.' : ''}`, 'small muted'));
 
   if (r.clashes.length) {
     box.appendChild(el('h3', 'Keyword cannibalization'));
@@ -1830,9 +1835,11 @@ function renderStore(r) {
   const wrap = el('div', null, 'table-wrap');
   const table = el('table', null, 'qa-table');
   const hr = el('tr');
-  for (const h of ['Product', 'Status', 'SEO', 'Keyword', 'Photos', 'Issues']) hr.appendChild(el('th', h));
+  const withGoogle = !!r.console?.setup;
+  for (const h of ['Product', 'Status', 'SEO', 'Keyword', 'Photos', ...(withGoogle ? [`Google ${r.console.days || 28} d`, 'Index'] : []), 'Issues']) hr.appendChild(el('th', h));
   table.appendChild(el('thead')).appendChild(hr);
   const tb = el('tbody');
+  const indexCells = new Map(); // url -> td, filled in chunks after the table is on screen
   for (const p of r.products) {
     const tr = el('tr');
     const name = el('td');
@@ -1842,6 +1849,13 @@ function renderStore(r) {
     const ph = el('td', `${p.photos} · ${p.totalKB ?? '?'} KB${p.heavyPhotos ? ` · ${p.heavyPhotos} over 100 KB` : ''}`, p.heavyPhotos ? 'bad' : '');
     if (p.heavyPhotos) ph.append(' ', photoFixButton(p.id));
     tr.appendChild(ph);
+    if (withGoogle) {
+      const g = p.google;
+      tr.appendChild(el('td', !g ? '–' : g.impressions ? `${g.impressions} imp · ${g.clicks} click${g.clicks === 1 ? '' : 's'}${g.position ? ` · pos ${g.position}` : ''}` : 'not shown', g && g.impressions && !g.clicks && g.impressions >= 50 ? 'bad' : ''));
+      const ix = el('td', p.status === 'publish' && p.url ? '…' : 'draft', 'muted');
+      if (p.status === 'publish' && p.url) indexCells.set(p.url, ix);
+      tr.appendChild(ix);
+    }
     const issues = el('td');
     if (!p.issues.length) issues.textContent = '✓ none';
     else {
@@ -1858,6 +1872,29 @@ function renderStore(r) {
   table.appendChild(tb);
   wrap.appendChild(table);
   box.appendChild(wrap);
+  if (indexCells.size) fillIndexColumn(indexCells, indexTile);
+}
+
+// Google's index status, ten products per request (the host's request limit; 2,000 inspections a day).
+let indexSeq = 0;
+async function fillIndexColumn(cells, tile) {
+  const seq = ++indexSeq;
+  const urls = [...cells.keys()];
+  let missing = 0, failed = 0;
+  for (let i = 0; i < urls.length; i += 10) {
+    const chunk = urls.slice(i, i + 10);
+    let r;
+    try { r = await call('qa', { console: { inspect: chunk } }); } catch { r = null; }
+    if (seq !== indexSeq) return; // a newer report replaced this one
+    for (const u of chunk) {
+      const td = cells.get(u), s = r?.results?.[u];
+      td.className = '';
+      if (!s || s.error) { td.textContent = '?'; td.title = s?.error || 'could not inspect'; failed++; continue; }
+      if (s.indexed) { td.textContent = '✓ indexed'; td.className = 'ok'; td.title = `${s.coverage}${s.lastCrawl ? ` · last crawled ${String(s.lastCrawl).slice(0, 10)}` : ''}`; }
+      else { td.textContent = `✗ ${s.coverage || 'not indexed'}`; td.className = 'bad'; td.title = s.lastCrawl ? `last crawled ${String(s.lastCrawl).slice(0, 10)}` : 'not crawled yet'; missing++; }
+    }
+    if (tile) { tile.querySelector('strong').textContent = String(missing); tile.querySelector('span').textContent = `products not in Google’s index (${Math.min(i + 10, urls.length)} of ${urls.length} checked${failed ? `, ${failed} could not be checked` : ''})`; tile.classList.toggle('bad', missing > 0); }
+  }
 }
 
 // The products this tool drafted, from the shop itself (any device), under the device's own runs.

@@ -167,6 +167,15 @@ test('keyword & URL QA: Google’s index, click rate and trend of a live page; a
   assert.equal(inspected.length, 1);
   assert.match(byLabel(d.checks)['In Google’s index'].info, /draft is not public yet/);
   assert.equal(d.console.trend, null);
+  // The product sitemap: checked for live products, with or without Search Console.
+  const listed = await keywordQa(watch, [watch, draft], cats, { suggest, site: SITE, sitemap: async () => ({ listed: true, total: 39 }) });
+  assert.equal(byLabel(listed.checks)['In the product sitemap'].status, 'pass');
+  assert.deepEqual(listed.console.sitemap, { listed: true, total: 39 });
+  const unlisted = await keywordQa(watch, [watch, draft], cats, { suggest, site: SITE, sitemap: async () => ({ listed: false, total: 39 }) });
+  assert.equal(byLabel(unlisted.checks)['In the product sitemap'].status, 'warn');
+  assert.match(byLabel(unlisted.checks)['In the product sitemap'].info, /noindex/);
+  const noSitemap = await keywordQa(draft, [watch, draft], cats, { suggest, site: SITE, sitemap: async () => { throw new Error('x'); } });
+  assert.equal(byLabel(noSitemap.checks)['In the product sitemap'], undefined); // drafts are not in the sitemap by nature
 });
 
 test('cannibalization report: groups, keeper and a different free keyword for each other product', async () => {

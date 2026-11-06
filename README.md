@@ -138,8 +138,17 @@ and which URL Google treats as the canonical - a page that is not indexed cannot
 reads the page's last 28 days against the 28 before (impressions falling, and impressions without
 clicks, which means the SEO title and meta description are not earning the click).
 
+The **shop report** gets two more columns with it: each product's impressions, clicks and average
+position of the last 28 days (one query for the whole shop) and whether Google has the page in its
+index (asked ten products per request after the table is on screen, so a big shop stays within the
+host's limits), plus a tile with how many products Google showed at all and how many are not indexed.
+
+Every check of a live product also reads Rank Math's `product-sitemap.xml` (no Search Console
+needed): a product missing from it is hard for Google to find at all.
+
 Google publishes the data about two days late; the tool reads the last 90 days and remembers each
-answer for ten minutes. Without the secret everything else works as before and the checks say
+answer for ten minutes. Google also hides rare searches from the query lists, so a new site shows
+only a few searches at first. Without the secret everything else works as before and the checks say
 "Search Console not connected".
 
 **Internal links.** Every new listing ends with a "See also" line: the product's category page

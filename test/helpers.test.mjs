@@ -78,6 +78,13 @@ test('"See also": the category page and the two closest live products of the cat
   const related = relatedProducts(name, ['couple-watches', 'watches'], ctx.products);
   // 591, 587 and 563 each share five words with the name; among equals the newest come first. Drafts and other categories never.
   assert.deepEqual(related.map((r) => r.id), [591, 587]);
+  // The most specific category wins over a parent-only match (live run #623: a pendant crept in through "jewellery").
+  const jewellery = [
+    { id: 510, status: 'publish', name: 'Vintage White Olive Leaf Pearl Pendant – Gold Enamel Pendant', url: 'https://vaxaura.com/product/white-enamel-pendant/', categories: ['pendants', 'jewellery'] },
+    { id: 570, status: 'publish', name: 'Black Stone Jhumka Earrings – Traditional Jewelry', url: 'https://vaxaura.com/product/black-stone-jhumka-earrings/', categories: ['earrings', 'jewellery'] },
+    { id: 613, status: 'publish', name: 'Peacock Jhumka Earrings – Antique Gold Peacock Jhumka Earrings with Pearl Drops', url: 'https://vaxaura.com/product/antique-gold-peacock-jhumka/', categories: ['earrings', 'jewellery'] },
+  ];
+  assert.deepEqual(relatedProducts('Enamel Tulip Earrings with Faux Pearl – Floral Studs', ['jewellery', 'earrings'], jewellery, { primary: 'earrings' }).map((r) => r.id), [613, 570]);
   const html = withSeeAlso('<p><strong>ticarto couple watch set</strong> in gold.</p>\n', { name, categories: ['couple-watches', 'watches'], ctx });
   assert.match(html, /<p class="vx-see-also">See also: <a href="https:\/\/vaxaura\.com\/Collections\/watches\/couple-watches\/">Couple Watches<\/a>, <a href="https:\/\/vaxaura\.com\/product\/gold-couple-watch-set-vaxaura\/">Ticarto Gold Couple Watch Set – Matching Gold Wristwatches<\/a>, <a href="https:\/\/vaxaura\.com\/product\/tissot-prx-couple-watch-vaxaura\/">[^<]+<\/a>\.<\/p>$/);
   assert.equal(withSeeAlso(html, { name, categories: ['couple-watches', 'watches'], ctx }), html, 'applied twice: still one line');

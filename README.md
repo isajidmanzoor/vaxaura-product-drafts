@@ -140,8 +140,10 @@ clicks, which means the SEO title and meta description are not earning the click
 
 The **shop report** gets two more columns with it: each product's impressions, clicks and average
 position of the last 28 days (one query for the whole shop) and whether Google has the page in its
-index (asked ten products per request after the table is on screen, so a big shop stays within the
-host's limits), plus a tile with how many products Google showed at all and how many are not indexed.
+index (asked ten products per request for the 25 products on the page on screen and remembered for
+the session, the whole shop only on request with one button, so a big shop stays within the host's
+limits and Google's 2,000 inspections a day), plus a tile with how many products Google showed at
+all and how many are not indexed.
 
 The report also asks the Sitemaps API which sitemaps Google has for the site, when it last read
 them and how many URLs are indexed; when none is submitted it says so and names the one to submit
@@ -243,7 +245,10 @@ Measured with `node cli/load-test.mjs 1000` (a fake WordPress with 1,000 product
 What keeps it affordable: the shop-wide lists ask WordPress only for the fields they use
 (`_fields`: 1,000 products are 1.6 MB instead of 7 MB), the shop's keywords are tokenised once and
 kept with the list so the live audit costs nothing per keystroke, the shop report is graded in pages
-of 100 that the browser adds up, the cannibalization report asks Google for alternatives for 5
+of 100 that the browser adds up and shows 25 products a page (with a search box and an "only
+products with failed checks" filter; the runs list, the clashes and the cannibalization groups page
+the same way, so a shop of hundreds of products never puts hundreds of rows, photos and buttons on
+the screen at once), photo thumbnails load only when scrolled into view, the cannibalization report asks Google for alternatives for 5
 products per run (the others on demand, "Find a free keyword"), and the AI prompts carry only the
 prices of the listing's category and the keywords near its candidates (about 1,700 tokens instead
 of 24,000 with 1,000 products).

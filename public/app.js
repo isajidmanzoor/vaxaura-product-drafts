@@ -183,7 +183,7 @@ function renderThumbs() {
   state.items.forEach((it, i) => {
     const li = document.createElement('li');
     const img = document.createElement('img');
-    img.src = it.preview || it.url; img.alt = `Photo ${i + 1}`;
+    img.src = it.preview || it.url; img.alt = `Photo ${i + 1}`; img.loading = 'lazy'; img.decoding = 'async';
     if (it.key) img.dataset.key = it.key;
     const badge = document.createElement('span');
     badge.className = 'badge' + (i === 0 ? ' main' : '');
@@ -619,7 +619,7 @@ function fillForm(p) {
     const row = document.createElement('div');
     row.className = 'alt';
     const thumb = document.createElement('img');
-    thumb.src = state.media[i].thumb; thumb.alt = '';
+    thumb.src = state.media[i].thumb; thumb.alt = ''; thumb.loading = 'lazy'; thumb.decoding = 'async';
     const wrap = document.createElement('div');
     const label = document.createElement('label');
     label.htmlFor = `alt-${i}`;
@@ -1422,7 +1422,17 @@ function renderCannibal(r) {
   box.appendChild(tiles);
   box.appendChild(el('p', `Checked ${new Date(r.at).toLocaleString()}. Nothing in the shop was changed.`, 'small muted'));
   if (!r.groups.length) { box.appendChild(el('p', '✓ No keyword cannibalization: every product targets its own searches.', 'ok-line')); return; }
-  for (const g of r.groups) {
+  const groupBox = el('div');
+  box.appendChild(groupBox);
+  paginate(groupBox, r.groups, {
+    per: 10, label: 'keyword groups',
+    searchable: (g) => `${g.keyword} ${g.members.map((m) => `${m.name} ${m.id}`).join(' ')}`,
+    checkbox: { label: 'only groups that must be fixed', test: (g) => g.severity === 'high' },
+    render: (items, mount) => { for (const g of items) mount.appendChild(clashGroupCard(g)); },
+  });
+}
+
+function clashGroupCard(g) {
     const card = el('div', null, `clash-group ${g.severity}`);
     const h = el('h3');
     h.append(el('span', g.severity === 'high' ? 'Must fix' : 'Check', `sev ${g.severity}`), ` “${g.keyword}” — ${g.members.length} products`);
@@ -1469,8 +1479,7 @@ function renderCannibal(r) {
       } else p.append(`#${f.id}: Google offered no free search for this product; choose a more specific focus keyword (colour, shape, brand) by hand.`);
       card.appendChild(p);
     }
-    box.appendChild(card);
-  }
+    return card;
 }
 
 const VERDICT = {
@@ -1785,6 +1794,50 @@ function mergeStore(a, b) {
 function el(tag, text, cls) { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
 function link(href, text) { const a = el('a', text); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer'; return a; }
 
+// Long lists page by page: a shop of hundreds of products no longer puts hundreds of rows, photos
+// and buttons on the screen at once, and the work tied to a row (Google index checks) is done for
+// the rows on screen only. searchable(item) gives the text a search box filters on; checkbox
+// { label, test } adds a filter such as "only products with issues"; onPage(items) runs after a page is drawn.
+function paginate(box, items, { per = 25, label = 'items', render, searchable = null, checkbox = null, onPage = null }) {
+  let page = 0, query = '', onlyChecked = false;
+  const head = el('div', null, 'pager-head'), top = el('div', null, 'pager'), body = el('div'), bottom = el('div', null, 'pager');
+  if (searchable) {
+    const s = el('input'); s.type = 'search'; s.placeholder = `Search ${label}…`; s.setAttribute('aria-label', `Search ${label}`);
+    s.addEventListener('input', () => { query = s.value.trim().toLowerCase(); page = 0; draw(); });
+    head.appendChild(s);
+  }
+  if (checkbox) {
+    const l = el('label', null, 'pager-check'), c = el('input'); c.type = 'checkbox';
+    c.addEventListener('change', () => { onlyChecked = c.checked; page = 0; draw(); });
+    l.append(c, ` ${checkbox.label}`);
+    head.appendChild(l);
+  }
+  box.append(head, top, body, bottom);
+  const visible = () => items.filter((it) => (!query || searchable(it).toLowerCase().includes(query)) && (!onlyChecked || checkbox.test(it)));
+  function draw() {
+    const list = visible();
+    const pages = Math.max(1, Math.ceil(list.length / per));
+    page = Math.min(page, pages - 1);
+    const slice = list.slice(page * per, (page + 1) * per);
+    body.innerHTML = '';
+    if (!list.length) body.appendChild(el('p', query || onlyChecked ? `No ${label} match.` : `No ${label}.`, 'small muted'));
+    else render(slice, body);
+    for (const bar of [top, bottom]) {
+      bar.innerHTML = '';
+      if (list.length <= per) { bar.hidden = true; continue; }
+      bar.hidden = false;
+      const prev = el('button', '← Previous', 'secondary small-fix'); prev.type = 'button'; prev.disabled = page === 0;
+      const next = el('button', 'Next →', 'secondary small-fix'); next.type = 'button'; next.disabled = page >= pages - 1;
+      prev.addEventListener('click', () => { page--; draw(); box.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+      next.addEventListener('click', () => { page++; draw(); box.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+      bar.append(prev, el('span', `${page * per + 1}–${Math.min(list.length, (page + 1) * per)} of ${list.length} ${label}`, 'pager-count'), next);
+    }
+    if (onPage) onPage(slice);
+  }
+  draw();
+  return { draw };
+}
+
 function renderStore(r) {
   const box = $('#qa-store');
   box.innerHTML = '';
@@ -1820,13 +1873,20 @@ function renderStore(r) {
 
   if (r.clashes.length) {
     box.appendChild(el('h3', 'Keyword cannibalization'));
-    const ul = el('ul', null, 'qa-checks');
-    for (const c of r.clashes) {
-      const li = el('li', null, c.severity === 'high' ? 'fail' : 'warn');
-      li.append(el('span', QA_ICON[c.severity === 'high' ? 'fail' : 'warn'], 'qa-icon'), ` #${c.a.id} ${c.a.name} ↔ #${c.b.id} ${c.b.name}: ${c.reason}`);
-      ul.appendChild(li);
-    }
-    box.appendChild(ul);
+    const clashBox = el('div');
+    box.appendChild(clashBox);
+    paginate(clashBox, r.clashes, {
+      per: 20, label: 'clashes',
+      render: (items, mount) => {
+        const ul = el('ul', null, 'qa-checks');
+        for (const c of items) {
+          const li = el('li', null, c.severity === 'high' ? 'fail' : 'warn');
+          li.append(el('span', QA_ICON[c.severity === 'high' ? 'fail' : 'warn'], 'qa-icon'), ` #${c.a.id} ${c.a.name} ↔ #${c.b.id} ${c.b.name}: ${c.reason}`);
+          ul.appendChild(li);
+        }
+        mount.appendChild(ul);
+      },
+    });
     if (r.clashesTotal > r.clashes.length) box.appendChild(el('p', `Showing ${r.clashes.length} of ${r.clashesTotal}; the counts above include them all. The cannibalization report below groups them with fixes.`, 'small muted'));
     box.appendChild(el('p', 'Fix: give one of the two products a different focus keyword (open it in WordPress, or check it above for details).', 'small muted'));
   }
@@ -1841,69 +1901,111 @@ function renderStore(r) {
     box.appendChild(b);
   }
   box.appendChild(el('h3', 'Products (most issues first)'));
-  const wrap = el('div', null, 'table-wrap');
-  const table = el('table', null, 'qa-table');
-  const hr = el('tr');
   const withGoogle = !!r.console?.setup;
-  for (const h of ['Product', 'Status', 'SEO', 'Keyword', 'Photos', ...(withGoogle ? [`Google ${r.console.days || 28} d`, 'Index'] : []), 'Issues']) hr.appendChild(el('th', h));
-  table.appendChild(el('thead')).appendChild(hr);
-  const tb = el('tbody');
-  const indexCells = new Map(); // url -> td, filled in chunks after the table is on screen
-  for (const p of r.products) {
-    const tr = el('tr');
-    const name = el('td');
-    name.append(p.url ? link(p.url, p.name) : p.name, el('small', ` #${p.id} · ${p.sku || 'no SKU'}`));
-    tr.append(name, el('td', STATUS[p.status] || p.status), el('td', String(p.score), p.score === 100 ? 'ok' : p.score < 80 ? 'bad' : ''),
-      el('td', p.keyword || '–'));
-    const ph = el('td', `${p.photos} · ${p.totalKB ?? '?'} KB${p.heavyPhotos ? ` · ${p.heavyPhotos} over 100 KB` : ''}`, p.heavyPhotos ? 'bad' : '');
-    if (p.heavyPhotos) ph.append(' ', photoFixButton(p.id));
-    tr.appendChild(ph);
-    if (withGoogle) {
-      const g = p.google;
-      tr.appendChild(el('td', !g ? '–' : g.impressions ? `${g.impressions} imp · ${g.clicks} click${g.clicks === 1 ? '' : 's'}${g.position ? ` · pos ${g.position}` : ''}` : 'not shown', g && g.impressions && !g.clicks && g.impressions >= 50 ? 'bad' : ''));
-      const ix = el('td', p.status === 'publish' && p.url ? '…' : 'draft', 'muted');
-      if (p.status === 'publish' && p.url) indexCells.set(p.url, ix);
-      tr.appendChild(ix);
-    }
-    const issues = el('td');
-    if (!p.issues.length) issues.textContent = '✓ none';
-    else {
-      const d = el('details');
-      d.append(el('summary', `${p.fail} failed · ${p.warn} to check`));
-      const ul = el('ul');
-      for (const i of p.issues) ul.appendChild(el('li', `${QA_ICON[i.status]} ${i.label}${i.info ? ` — ${i.info}` : ''}`, i.status));
-      d.appendChild(ul);
-      issues.appendChild(d);
-    }
-    tr.appendChild(issues);
-    tb.appendChild(tr);
+  const liveUrls = r.products.filter((p) => p.status === 'publish' && p.url).map((p) => p.url);
+  const tableBox = el('div');
+  box.appendChild(tableBox);
+  indexQueue.length = 0; // a new report: checks queued for the old one are dropped
+  indexCtx = withGoogle ? { allUrls: liveUrls, tile: indexTile, tableBox } : null;
+  // 25 products a page, a search box and an "only with issues" filter; Google's index is asked for
+  // the page on screen (remembered per URL, so paging back costs nothing).
+  paginate(tableBox, r.products, {
+    per: 25, label: 'products',
+    searchable: (p) => `${p.name} ${p.id} ${p.sku} ${p.keyword || ''} ${STATUS[p.status] || p.status}`,
+    checkbox: { label: 'only products with failed checks', test: (p) => p.fail > 0 },
+    render: (items, mount) => {
+      const wrap = el('div', null, 'table-wrap');
+      const table = el('table', null, 'qa-table');
+      const hr = el('tr');
+      for (const h of ['Product', 'Status', 'SEO', 'Keyword', 'Photos', ...(withGoogle ? [`Google ${r.console.days || 28} d`, 'Index'] : []), 'Issues']) hr.appendChild(el('th', h));
+      table.appendChild(el('thead')).appendChild(hr);
+      const tb = el('tbody');
+      for (const p of items) {
+        const tr = el('tr');
+        const name = el('td');
+        name.append(p.url ? link(p.url, p.name) : p.name, el('small', ` #${p.id} · ${p.sku || 'no SKU'}`));
+        tr.append(name, el('td', STATUS[p.status] || p.status), el('td', String(p.score), p.score === 100 ? 'ok' : p.score < 80 ? 'bad' : ''),
+          el('td', p.keyword || '–'));
+        const ph = el('td', `${p.photos} · ${p.totalKB ?? '?'} KB${p.heavyPhotos ? ` · ${p.heavyPhotos} over 100 KB` : ''}`, p.heavyPhotos ? 'bad' : '');
+        if (p.heavyPhotos) ph.append(' ', photoFixButton(p.id));
+        tr.appendChild(ph);
+        if (withGoogle) {
+          const g = p.google;
+          tr.appendChild(el('td', !g ? '–' : g.impressions ? `${g.impressions} imp · ${g.clicks} click${g.clicks === 1 ? '' : 's'}${g.position ? ` · pos ${g.position}` : ''}` : 'not shown', g && g.impressions && !g.clicks && g.impressions >= 50 ? 'bad' : ''));
+          const ix = el('td', p.status === 'publish' && p.url ? '…' : 'draft', 'muted');
+          if (p.status === 'publish' && p.url) { ix.dataset.url = p.url; paintIndexCell(ix, INDEX_CACHE.get(p.url)); }
+          tr.appendChild(ix);
+        }
+        const issues = el('td');
+        if (!p.issues.length) issues.textContent = '✓ none';
+        else {
+          const d = el('details');
+          d.append(el('summary', `${p.fail} failed · ${p.warn} to check`));
+          const ul = el('ul');
+          for (const i of p.issues) ul.appendChild(el('li', `${QA_ICON[i.status]} ${i.label}${i.info ? ` — ${i.info}` : ''}`, i.status));
+          d.appendChild(ul);
+          issues.appendChild(d);
+        }
+        tr.appendChild(issues);
+        tb.appendChild(tr);
+      }
+      table.appendChild(tb);
+      wrap.appendChild(table);
+      mount.appendChild(wrap);
+    },
+    onPage: withGoogle ? (items) => queueIndex(items.filter((p) => p.status === 'publish' && p.url).map((p) => p.url), { first: true }) : null,
+  });
+  if (withGoogle && liveUrls.length > 25) {
+    const all = el('button', `Check Google’s index for all ${liveUrls.length} live products`, 'secondary small-fix'); all.type = 'button';
+    all.addEventListener('click', () => { all.disabled = true; queueIndex(liveUrls); });
+    box.appendChild(all);
   }
-  table.appendChild(tb);
-  wrap.appendChild(table);
-  box.appendChild(wrap);
-  if (indexCells.size) fillIndexColumn(indexCells, indexTile);
 }
 
-// Google's index status, ten products per request (the host's request limit; 2,000 inspections a day).
-let indexSeq = 0;
-async function fillIndexColumn(cells, tile) {
-  const seq = ++indexSeq;
-  const urls = [...cells.keys()];
-  let missing = 0, failed = 0;
-  for (let i = 0; i < urls.length; i += 10) {
-    const chunk = urls.slice(i, i + 10);
-    let r;
-    try { r = await call('qa', { console: { inspect: chunk } }); } catch { r = null; }
-    if (seq !== indexSeq) return; // a newer report replaced this one
-    for (const u of chunk) {
-      const td = cells.get(u), s = r?.results?.[u];
-      td.className = '';
-      if (!s || s.error) { td.textContent = '?'; td.title = s?.error || 'could not inspect'; failed++; continue; }
-      if (s.indexed) { td.textContent = '✓ indexed'; td.className = 'ok'; td.title = `${s.coverage}${s.lastCrawl ? ` · last crawled ${String(s.lastCrawl).slice(0, 10)}` : ''}`; }
-      else { td.textContent = `✗ ${s.coverage || 'not indexed'}`; td.className = 'bad'; td.title = s.lastCrawl ? `last crawled ${String(s.lastCrawl).slice(0, 10)}` : 'not crawled yet'; missing++; }
+// Google's index status, remembered per URL for the session and asked ten products per request
+// (the host's request limit; 2,000 inspections a day): the page on screen goes first, the rest only on request.
+const INDEX_CACHE = new Map();
+const indexQueue = []; // URLs waiting for an inspection, front first
+let indexCtx = null, indexBusy = false; // the report on screen: { allUrls, tile, tableBox }
+function paintIndexCell(td, s) {
+  if (!td || !s) return;
+  td.className = '';
+  if (s.error) { td.textContent = '?'; td.title = s.error; return; }
+  if (s.indexed) { td.textContent = '✓ indexed'; td.className = 'ok'; td.title = `${s.coverage}${s.lastCrawl ? ` · last crawled ${String(s.lastCrawl).slice(0, 10)}` : ''}`; }
+  else { td.textContent = `✗ ${s.coverage || 'not indexed'}`; td.className = 'bad'; td.title = s.lastCrawl ? `last crawled ${String(s.lastCrawl).slice(0, 10)}` : 'not crawled yet'; }
+}
+function indexTally() {
+  const { allUrls, tile } = indexCtx || {};
+  if (!tile) return;
+  const known = allUrls.filter((u) => INDEX_CACHE.has(u) && !INDEX_CACHE.get(u).error);
+  const missing = known.filter((u) => !INDEX_CACHE.get(u).indexed).length;
+  const failed = allUrls.filter((u) => INDEX_CACHE.get(u)?.error).length;
+  const waiting = indexQueue.length;
+  tile.querySelector('strong').textContent = String(missing);
+  tile.querySelector('span').textContent = `products not in Google’s index (${known.length} of ${allUrls.length} checked${failed ? `, ${failed} could not be checked` : ''}${waiting ? `, ${waiting} checking…` : ''})`;
+  tile.classList.toggle('bad', missing > 0);
+}
+function queueIndex(urls, { first = false } = {}) {
+  const fresh = urls.filter((u) => !INDEX_CACHE.has(u) && !indexQueue.includes(u));
+  if (first) indexQueue.unshift(...fresh); else indexQueue.push(...fresh);
+  indexTally();
+  if (!indexBusy && indexQueue.length) drainIndex();
+}
+async function drainIndex() {
+  indexBusy = true;
+  try {
+    while (indexQueue.length) {
+      const chunk = indexQueue.splice(0, 10);
+      let r;
+      try { r = await call('qa', { console: { inspect: chunk } }); } catch (err) { r = { error: err.message }; }
+      for (const u of chunk) {
+        const s = r?.results?.[u] || { error: r?.error || 'could not inspect' };
+        INDEX_CACHE.set(u, s);
+        paintIndexCell(indexCtx?.tableBox.querySelector(`td[data-url="${CSS.escape(u)}"]`), s);
+      }
+      indexTally();
     }
-    if (tile) { tile.querySelector('strong').textContent = String(missing); tile.querySelector('span').textContent = `products not in Google’s index (${Math.min(i + 10, urls.length)} of ${urls.length} checked${failed ? `, ${failed} could not be checked` : ''})`; tile.classList.toggle('bad', missing > 0); }
-  }
+  } finally { indexBusy = false; }
 }
 
 // The products this tool drafted, from the shop itself (any device), under the device's own runs.
@@ -1920,16 +2022,24 @@ async function renderShopRuns(box) {
   box.appendChild(el('h3', `Saved with this tool, from the shop (${r.runs.length})`));
   if (!r.runs.length) { box.appendChild(el('p', 'No product in the shop carries this tool’s mark yet.', 'small muted')); return; }
   box.appendChild(el('p', 'Every product this tool created, whichever device it was made on, newest first. “Check” runs the product QA.', 'small muted'));
-  const ul = el('ul', null, 'history');
-  for (const p of r.runs) {
-    const li = el('li');
-    li.append(p.at ? `${new Date(p.at).toLocaleDateString()} · ` : '', link(p.editUrl, `#${p.id} ${p.name}`), ` · ${STATUS[p.status] || p.status}${p.score ? ` · SEO ${p.score} at saving` : ''}${p.keyword ? ` · “${p.keyword}”` : ''} `);
-    const b = el('button', 'Check', 'link-btn'); b.type = 'button';
-    b.addEventListener('click', () => { $('#qa-id').value = String(p.id); $('#qa-form').requestSubmit(); $('#qa-form').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
-    li.appendChild(b);
-    ul.appendChild(li);
-  }
-  box.appendChild(ul);
+  const listBox = el('div');
+  box.appendChild(listBox);
+  paginate(listBox, r.runs, {
+    per: 10, label: 'products',
+    searchable: (p) => `${p.name} ${p.id} ${p.sku || ''} ${p.keyword || ''}`,
+    render: (items, mount) => {
+      const ul = el('ul', null, 'history');
+      for (const p of items) {
+        const li = el('li');
+        li.append(p.at ? `${new Date(p.at).toLocaleDateString()} · ` : '', link(p.editUrl, `#${p.id} ${p.name}`), ` · ${STATUS[p.status] || p.status}${p.score ? ` · SEO ${p.score} at saving` : ''}${p.keyword ? ` · “${p.keyword}”` : ''} `);
+        const b = el('button', 'Check', 'link-btn'); b.type = 'button';
+        b.addEventListener('click', () => { $('#qa-id').value = String(p.id); $('#qa-form').requestSubmit(); $('#qa-form').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+        li.appendChild(b);
+        ul.appendChild(li);
+      }
+      mount.appendChild(ul);
+    },
+  });
 }
 
 function renderHistory() {
@@ -2184,7 +2294,7 @@ function renderPhotoPlan() {
     const after = el('span', prep ? `→ ${kb(prep.blob.size)} KB ${prep.mime === 'image/webp' ? 'WebP' : 'JPG'}, ${prep.width}×${prep.height}` : '', 'maint-after');
     const pics = el('span', null, 'maint-pics');
     pics.appendChild(img);
-    if (prep) { const ni = el('img'); ni.src = prep.url; ni.alt = 'new'; pics.appendChild(ni); }
+    if (prep) { const ni = el('img'); ni.src = prep.url; ni.alt = 'new'; ni.loading = 'lazy'; pics.appendChild(ni); }
     li.append(cb, pics, lab, after);
     ul.appendChild(li);
   }

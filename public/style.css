@@ -274,6 +274,15 @@ li.fail .qa-icon { color: var(--bad); }
 .table-wrap { overflow-x: auto; margin: 0 -4px; }
 .qa-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
 .qa-table th, .qa-table td { text-align: left; vertical-align: top; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+/* The product column stays put while a wide table scrolls sideways on a phone. */
+.qa-table th:first-child, .qa-table td:first-child { position: sticky; left: 0; background: var(--card); z-index: 1; min-width: 160px; max-width: 260px; }
+/* Long lists page by page (shop report, runs, clashes, cannibalization groups). */
+.pager-head { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 6px 0; }
+.pager-head input[type="search"] { flex: 1 1 200px; min-width: 0; }
+.pager-check { display: inline-flex; align-items: center; gap: 6px; font-size: .86rem; }
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
+.pager[hidden] { display: none; }
+.pager-count { font-size: .82rem; color: var(--muted); }
 .qa-table td small { display: block; color: var(--muted); }
 .qa-table td.ok { color: var(--ok); font-weight: 700; }
 .qa-table td.bad { color: var(--bad); font-weight: 700; }

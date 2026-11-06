@@ -2,12 +2,29 @@ import dns from 'node:dns/promises';
 import net from 'node:net';
 import { route } from '../lib/http.mjs';
 import { uploadMedia, slugify } from '../lib/woo.mjs';
+import { looksLike } from './upload.js';
 
 // Imports a photo from a link (supplier site, WhatsApp web image, Daraz, another store) into the
 // Media Library. The server fetches it, so only public web addresses are allowed (no internal IPs).
 const TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
 const MAX = 8 * 1024 * 1024;
 const RAW_MAX = 4.2 * 1024 * 1024;
+
+// The photo's real type: its first bytes decide, not the website's label. Daraz labels every photo
+// "image/jpg" (not a real type), other sites say "application/octet-stream" or nothing at all.
+// Returns 'image/jpeg' | 'image/png' | 'image/webp', or null when the bytes are not a photo.
+export function photoType(headerType, buf) {
+  const sniffed = Object.keys(TYPES).find((t) => looksLike(t, buf));
+  if (sniffed) return sniffed;
+  const raw = String(headerType || '').split(';')[0].trim().toLowerCase();
+  const alias = { 'image/jpg': 'image/jpeg', 'image/pjpeg': 'image/jpeg', 'image/x-png': 'image/png' }[raw] || raw;
+  return TYPES[alias] && looksLike(alias, buf) ? alias : null;
+}
+// Worth downloading at all? Pages (text/html) and scripts are refused before their body is read.
+export const mayBePhoto = (headerType) => {
+  const raw = String(headerType || '').split(';')[0].trim().toLowerCase();
+  return raw === '' || raw.startsWith('image/') || raw === 'application/octet-stream' || raw === 'binary/octet-stream';
+};
 
 export function isPrivate(ip) {
   if (net.isIPv4(ip)) {
@@ -37,11 +54,14 @@ export default route('POST', async (req, reply) => {
     url = new URL(res.headers.get('location'), url);
   }
   if (!res.ok) throw Object.assign(new Error(`The website answered with an error (HTTP ${res.status}).`), { status: 400 });
-  const mime = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-  if (!TYPES[mime]) throw Object.assign(new Error(`The link is not a JPG/PNG/WebP photo (${mime || 'unknown type'}). Open the photo itself and copy its address.`), { status: 400 });
+  const header = res.headers.get('content-type') || '';
+  const notPhoto = () => Object.assign(new Error(`The link is not a JPG/PNG/WebP photo (${header.split(';')[0].trim() || 'unknown type'}). Open the photo itself and copy its address.`), { status: 400 });
+  if (!mayBePhoto(header)) throw notPhoto();
   if (Number(res.headers.get('content-length') || 0) > MAX) throw Object.assign(new Error('The photo is larger than 8 MB.'), { status: 413 });
   const buf = Buffer.from(await res.arrayBuffer());
   if (buf.length > MAX) throw Object.assign(new Error('The photo is larger than 8 MB.'), { status: 413 });
+  const mime = photoType(header, buf);
+  if (!mime) throw notPhoto();
   let base;
   try { base = decodeURIComponent(url.pathname.split('/').pop() || 'photo'); } catch { base = 'photo'; }
   base = slugify(base.replace(/\.[a-z0-9]+$/i, '')).slice(0, 60) || 'photo';

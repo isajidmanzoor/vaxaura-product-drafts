@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isPrivate } from '../api/fetch-photo.js';
+import { isPrivate, photoType, mayBePhoto } from '../api/fetch-photo.js';
 import { titleCase } from '../lib/ai.mjs';
 import { possibleDuplicates, relatedProducts, withSeeAlso, stripSeeAlso } from '../lib/woo.mjs';
 
@@ -9,6 +9,23 @@ test('photo links may not reach internal addresses', () => {
     assert.equal(isPrivate(ip), true, ip);
   }
   for (const ip of ['179.61.189.170', '8.8.8.8', '172.32.0.1', '2a02:4780:16:6ab7::1']) assert.equal(isPrivate(ip), false, ip);
+});
+
+test('a photo link is judged by its bytes: Daraz’s "image/jpg" and octet-stream photos are accepted, pages are not', () => {
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(64)]);
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64)]);
+  const webp = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBP'), Buffer.alloc(64)]);
+  const html = Buffer.from('<!doctype html><html></html>');
+  assert.equal(photoType('image/jpg', jpeg), 'image/jpeg'); // Daraz, 2026-11-06
+  assert.equal(photoType('image/jpeg; charset=binary', jpeg), 'image/jpeg');
+  assert.equal(photoType('application/octet-stream', png), 'image/png');
+  assert.equal(photoType('', webp), 'image/webp');
+  assert.equal(photoType('image/jpeg', html), null); // labelled a photo, is a page
+  assert.equal(photoType('image/jpg', html), null);
+  assert.equal(mayBePhoto('image/jpg'), true);
+  assert.equal(mayBePhoto('application/octet-stream'), true);
+  assert.equal(mayBePhoto(''), true);
+  assert.equal(mayBePhoto('text/html; charset=utf-8'), false);
 });
 
 test('SEO title becomes Title Case, accents and small words kept', () => {

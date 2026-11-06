@@ -11,10 +11,13 @@ test('a product page gives its photos: og:image first, Daraz resized copies fold
       {"url":"https:\\/\\/img.drz.lazcdn.com\\/static\\/pk\\/p\\/017ec8b93cab70837ad51a1acc542031.jpg_720x720q80.jpg"},
       {"url":"https:\\/\\/img.drz.lazcdn.com\\/static\\/pk\\/p\\/47744ac0f53d4415d306b65dffde34af.jpg_720x720q80.jpg"},
       {"zoom":"https:\\/\\/static-01.daraz.pk\\/p\\/47744ac0f53d4415d306b65dffde34af.jpg"}]}</script>
-    <img src="//cdn.example.com/photos/side.webp?v=2"> <img src="/media/voucher-once.png"> <img src="https://x.com/sprite.png">
+    <img src="//cdn.example.com/photos/side.webp?v=2"> <img src="//cdn.example.com/photos/side.webp?v=2">
+    <img src="/media/voucher-once.png"> <img src="https://x.com/sprite.png">
+    <img src="https://lzd-img-global.slatic.net/us/domino/3b870cb043c7f8a9741cbf66329e294e.png">
     </body></html>`;
   // og:image first; the gallery photos (listed more than once: thumbnail, large, zoom, even under
-  // two hosts) folded into one original each; the one-off voucher and the sprite left out.
+  // two hosts) folded into one original each; the one-off voucher, the one-off Daraz wordmark
+  // (an <img> counts once, not once per pass) and the sprite left out.
   assert.deepEqual(pagePhotos(html, 'https://www.daraz.pk/products/x.html'), [
     'https://laz-img-sg.alicdn.com/p/39243b91b8cc1fc204d6fdee175787b9.jpg',
     'https://img.drz.lazcdn.com/static/pk/p/017ec8b93cab70837ad51a1acc542031.jpg',

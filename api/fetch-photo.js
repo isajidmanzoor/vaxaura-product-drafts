@@ -35,7 +35,8 @@ export const PAGE_PHOTOS = 8;
 export function pagePhotos(html, pageUrl) {
   const text = String(html || '').replace(/\\\//g, '/').replace(/&amp;/g, '&');
   const seen = new Map(); // key -> { url, n, og }
-  const add = (raw, og = false) => {
+  // count: an <img> tag's address was already counted by the address pass; the tag pass only adds relative ones.
+  const add = (raw, og = false, count = true) => {
     let u = raw.trim();
     if (u.startsWith('//')) u = 'https:' + u;
     else if (!/^https?:\/\//i.test(u)) { try { u = new URL(u, pageUrl).href; } catch { return; } }
@@ -47,12 +48,12 @@ export function pagePhotos(html, pageUrl) {
     const file = path.split('/').pop().toLowerCase();
     const key = file.replace(/\.[a-z0-9]+$/, '').length >= 20 ? file : u;
     const hit = seen.get(key);
-    if (hit) { hit.n++; hit.og ||= og; } else seen.set(key, { url: u, n: 1, og });
+    if (hit) { if (count) hit.n++; hit.og ||= og; } else seen.set(key, { url: u, n: 1, og });
   };
   for (const m of text.matchAll(/<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)(?::secure_url)?["'][^>]+content=["']([^"']+)["']/gi)) add(m[1], true);
   for (const m of text.matchAll(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:image|twitter:image)(?::secure_url)?["']/gi)) add(m[1], true);
   for (const m of text.matchAll(/(?:https?:)?\/\/[^\s"'<>()\\]+?\.(?:jpe?g|png|webp)(?:_\d+x\d+q\d+\.(?:jpe?g|png|webp))?(?:\?[^\s"'<>()\\]*)?(?=["'\s<>()\\,]|$)/gi)) add(m[0]);
-  for (const m of text.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)) add(m[1]); // relative addresses too
+  for (const m of text.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)) add(m[1], false, false); // relative addresses too
   // Gallery photos are listed more than once (thumbnail, large, zoom); a badge or voucher once.
   // When the page has repeated ones, the one-offs are left out; og:image always stays first.
   const all = [...seen.values()];

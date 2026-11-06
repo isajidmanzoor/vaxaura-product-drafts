@@ -48,3 +48,22 @@ test('helpers', () => {
   assert.equal(nextSku('VAX-JP', ['VAX-JP06', 'VAX - JP04', 'VAX-JP05']), 'VAX-JP07');
   assert.equal(nextSku('VAX-JR', []), 'VAX-JR01');
 });
+
+test('a made-up secondary keyword warns but blocks nothing; a made-up focus keyword blocks', () => {
+  const p = fixture();
+  const pool = ['glycolic bright face wash', 'loreal face wash', 'glycolic face wash', 'face wash for glow'];
+  p.seo.focus_keyword = 'glycolic bright face wash, loreal face wash, made up thing';
+  const a = seoAudit(p, { keywordPool: pool });
+  const t = byId(a);
+  assert.equal(t.qKwSecondary.pass, false);
+  assert.equal(t.qKwSecondary.warn, true);
+  assert.equal(t.qKwSecondary.info, 'made up thing');
+  assert.ok(!a.fixable.some((x) => x.id === 'qKwSecondary'), 'a warning never sends the AI back or refuses the save');
+  p.seo.focus_keyword = 'glycolic bright face wash, loreal face wash';
+  assert.equal(byId(seoAudit(p, { keywordPool: pool })).qKwSecondary.pass, true);
+  // Without enough real searches to choose from, secondary keywords are not judged.
+  p.seo.focus_keyword = 'glycolic bright face wash, made up thing';
+  assert.equal(byId(seoAudit(p, { keywordPool: ['glycolic bright face wash'] })).qKwSecondary.pass, true);
+  p.seo.focus_keyword = 'made up thing';
+  assert.ok(seoAudit(p, { keywordPool: pool }).fixable.some((x) => x.id === 'qKwReal'));
+});

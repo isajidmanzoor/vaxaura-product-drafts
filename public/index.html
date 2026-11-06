@@ -50,7 +50,7 @@
   <!-- 1. Photos -->
   <section id="photos" class="card" hidden>
     <h1 tabindex="-1">New product</h1>
-    <p class="muted">Add 3–5 clear photos: front, side, close-up, worn or in hand, and packaging. The <strong>first photo is the main image</strong>; use the arrows to change the order.</p>
+    <p class="muted">Add 4–5 clear photos: front, side, close-up, worn or in hand, and packaging (4 or more give the listing full Rank Math image points). The <strong>first photo is the main image</strong>; use the arrows to change the order.</p>
 
     <div class="drop" id="drop">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-4 4m4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -101,7 +101,7 @@
       <h3>What was identified</h3>
       <div id="rl-ident"></div>
       <h3>Keywords, overlap &amp; cannibalization</h3>
-      <p class="small muted">Real Google searches in Pakistan for this product. <strong>Free</strong> = no other Vaxaura product targets it; <strong>overlap</strong> = a shorter or longer form is another product’s keyword; <strong>taken</strong> = another product already targets it (not offered).</p>
+      <p class="small muted">Real Google searches in Pakistan for this product, each checked with Google (a crossed-out one is not a Google search and is never used). ▲▲▲ ▲▲ ▲ = high, medium or low <strong>demand</strong> against the best candidate, from Google’s own ranking of searches. <strong>Free</strong> = no other Vaxaura product targets it; <strong>overlap</strong> = a shorter or longer form is another product’s keyword; <strong>taken</strong> = another product already targets it (not offered).</p>
       <div id="rl-keywords" class="kw-report"></div>
       <h3>Market evidence &amp; price</h3>
       <div id="rl-market"></div>
@@ -178,7 +178,7 @@
           <label for="f-kw">Focus keyword <span class="muted">(first is the focus keyword, others are secondary)</span></label>
           <input id="f-kw" name="focus_keyword" required>
           <div id="kw-ideas" class="kw-ideas" hidden>
-            <p class="small muted">Real Google searches in Pakistan for this product (most searched first). Click one to make it the focus keyword. Amber = overlaps another product’s keyword; the taken ones are listed, not offered:</p>
+            <p class="small muted">Real Google searches in Pakistan for this product (most searched first; ▲▲▲ ▲▲ ▲ = high, medium or low demand). Click one to make it the focus keyword. Amber = overlaps another product’s keyword; crossed out = not a Google search; the taken ones are listed, not offered:</p>
             <div id="kw-chips" class="kw-report"></div>
           </div>
           <div id="clash" class="clash" hidden>
@@ -287,6 +287,7 @@
     <p id="qa-store-status" class="small muted" role="status"></p>
     <div id="qa-store"></div>
     <h2>This tool’s runs</h2>
+    <p class="small muted">The runs made on this device (with timings) and, from the shop itself, every product the tool saved on any device.</p>
     <div id="qa-history"></div>
   </section>
 

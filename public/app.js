@@ -687,6 +687,22 @@ function renderKeywordIdeas() {
   });
 }
 
+// Demand (how much a search is asked for against the best candidate, from Google's own ranking of
+// its suggestions) and whether Google really offers the phrase, as a chip's mark and tooltip.
+const DEMAND_MARK = { high: '▲▲▲', medium: '▲▲', low: '▲' };
+function demandText(k) {
+  const d = k.tier ? `demand ${k.tier}${k.demand != null ? ` (${k.demand}/100 of the best candidate, from Google’s ranking of searches)` : ''}` : `suggested by Google ${k.hits} time${k.hits > 1 ? 's' : ''}`;
+  const real = k.searched === true ? 'a real Google search' : k.searched === false ? 'Google does not offer this search' : 'not yet checked with Google';
+  return `${d} · ${real}`;
+}
+function keywordChip(k, { tag = 'span', extra = '', onPick } = {}) {
+  const b = el(tag, null, `kw-chip ${extra}${k.searched === false ? ' unsearched' : k.searched == null ? ' unverified' : ''}`);
+  b.append(k.kw);
+  if (k.tier) b.appendChild(el('span', DEMAND_MARK[k.tier], 'demand'));
+  if (onPick) { b.type = 'button'; b.addEventListener('click', () => onPick(k)); }
+  return b;
+}
+
 // Keyword candidates with their standing against the shop: free, overlap (a shorter or longer form is
 // another product's keyword) and the taken ones (another product already targets them; listed, not
 // offered). onPick: the click handler of a chip on the review form; without it the chips only inform.
@@ -697,9 +713,10 @@ function renderKeywordReport(box, market, onPick) {
   const current = onPick ? F('focus_keyword').value.split(',')[0].trim().toLowerCase() : '';
   const chips = el('div', null, 'kw-chips');
   for (const k of pool) {
-    const b = el(onPick ? 'button' : 'span', k.kw, `kw-chip ${k.status === 'overlap' ? 'overlap' : 'free'}${k.kw === current ? ' on' : ''}${onPick ? '' : ' static'}`);
-    if (onPick) { b.type = 'button'; b.addEventListener('click', () => onPick(k)); }
-    b.title = `Suggested by Google ${k.hits} time${k.hits > 1 ? 's' : ''} · ${k.status === 'overlap' ? 'overlaps another product’s keyword' : 'free: no other product targets it'}`;
+    // A phrase Google does not offer is shown, crossed out, never offered as a keyword.
+    const pick = onPick && k.searched !== false ? onPick : null;
+    const b = keywordChip(k, { tag: pick ? 'button' : 'span', extra: `${k.status === 'overlap' ? 'overlap' : 'free'}${k.kw === current ? ' on' : ''}${pick ? '' : ' static'}`, onPick: pick });
+    b.title = `${demandText(k)} · ${k.status === 'overlap' ? 'overlaps another product’s keyword' : 'free: no other product targets it'}`;
     chips.appendChild(b);
   }
   box.appendChild(chips);
@@ -719,7 +736,8 @@ function renderKeywordReport(box, market, onPick) {
     }
     box.appendChild(ul);
   }
-  box.appendChild(el('p', `${pool.length - overlaps.length} free · ${overlaps.length} overlapping · ${taken.length} taken by other products`, 'kw-legend'));
+  const verified = pool.filter((k) => k.searched === true).length, unsearched = pool.filter((k) => k.searched === false).length;
+  box.appendChild(el('p', `${pool.length - overlaps.length} free · ${overlaps.length} overlapping · ${taken.length} taken by other products · ${verified} checked with Google${unsearched ? ` · ${unsearched} not a Google search (crossed out)` : ''} · ▲▲▲ high, ▲▲ medium, ▲ low demand`, 'kw-legend'));
 }
 
 // The research screen (step 2): what was identified, the keyword standing and the market evidence,
@@ -791,11 +809,11 @@ function renderClashes(conflicts = []) {
   const focusClash = conflicts.filter((c) => c.kind !== 'my-secondary');
   if (focusClash.length) {
     const contested = new Set(focusClash.map((c) => lower(c.keyword)));
-    const free = (state.market?.keywords || []).filter((k) => k.status !== 'overlap' && !contested.has(lower(k.kw)) && lower(k.kw) !== lower(focus));
+    const free = (state.market?.keywords || []).filter((k) => k.status !== 'overlap' && k.searched !== false && !contested.has(lower(k.kw)) && lower(k.kw) !== lower(focus));
     if (free.length) {
       fix.appendChild(el('p', 'Make the focus keyword a free real Google search instead (the SEO title, URL, first sentences and main photo alt then need it; “Fix with AI” rewrites them):', 'small'));
       const chips = el('div', null, 'kw-chips');
-      for (const k of free) chips.appendChild(chip(k.kw, `Suggested by Google ${k.hits} time${k.hits > 1 ? 's' : ''}`, () => setKeywords([k.kw, ...secondary.filter((s) => lower(s) !== lower(k.kw))])));
+      for (const k of free) chips.appendChild(chip(k.kw, demandText(k), () => setKeywords([k.kw, ...secondary.filter((s) => lower(s) !== lower(k.kw))])));
       fix.appendChild(chips);
     } else fix.appendChild(el('p', 'Google offered no free real search for this product. Make the keyword more specific by hand (colour, shape, brand), then check it under QA & analytics → Check a keyword.', 'small'));
   }
@@ -910,7 +928,8 @@ function readForm() {
     weight: n(F('weight').value), dimensions: { length: n(F('length').value), width: n(F('width').value), height: n(F('height').value) },
     categories: [...$('#cats').querySelectorAll('input:checked')].map((i) => i.value),
     new_category: n(F('new_category').value), new_category_parent: n(F('new_category_parent').value),
-    keyword_pool: (state.market?.keywords || []).map((k) => k.kw),
+    // The real searches the audit may accept: never a phrase Google does not offer.
+    keyword_pool: (state.market?.keywords || []).filter((k) => k.searched !== false).map((k) => k.kw),
     tags: F('tags').value.split(',').map(n).filter(Boolean),
     attributes: F('attributes').value.split('\n').map((l) => l.split(':')).filter((x) => x.length > 1 && n(x[0]))
       .map(([k, ...v]) => ({ name: n(k), options: v.join(':').split(',').map(n).filter(Boolean) })),
@@ -965,6 +984,7 @@ const FIX = {
   qKw: () => 'Make the focus keyword 2–4 words naming the product (no “price”, “Pakistan”, “buy” or “best”).',
   qClaims: (t) => `Remove or soften ${t.info} — neither your notes nor the label confirm it (add it to your notes if it is true).`,
   qKwReal: () => 'Nobody searches this exact phrase. Click a real Google search under the focus keyword, then “Fix with AI” to rewrite the title, URL and text around it.',
+  qKwSecondary: (t) => `Nobody searches ${t.info.split(', ').map((k) => `“${k}”`).join(' or ')}. Replace it with a real Google search from the chips under the focus keyword, or drop it (saving is not blocked).`,
   qCannibal: (t) => `Another Vaxaura product targets this keyword (${t.info}), so the two pages would compete on Google. Choose another keyword or click “Fix with AI”.`,
 };
 
@@ -976,13 +996,14 @@ function renderAudit(audit, errors) {
   tests.innerHTML = '';
   for (const t of audit.tests.filter((x) => x.max > 0 || !x.pass)) {
     const li = document.createElement('li');
-    li.className = t.pass ? '' : 'fail';
+    // A test marked warn (e.g. a made-up secondary keyword) only shows; it blocks nothing.
+    li.className = t.pass ? '' : t.warn ? 'warn' : 'fail';
     li.textContent = `${t.name}${t.info && !['kwTitle', 'kwSet', 'schema'].includes(t.id) ? ` — ${t.info}` : ''}`;
     if (!t.pass) { const s = document.createElement('span'); s.className = 'fix'; s.textContent = (FIX[t.id] || (() => t.fix))(t); li.appendChild(s); }
     tests.appendChild(li);
   }
   $('#form-errors').textContent = errors.map((e) => e.replace(/^Not valid:\s*/, '')).join('\n');
-  const failing = audit.tests.filter((x) => !x.pass).length;
+  const failing = audit.tests.filter((x) => !x.pass && !x.warn).length;
   const chip = $('#score-chip');
   chip.textContent = failing ? `SEO ${audit.score}/100 · ${failing} to fix` : `SEO ${audit.score}/100 ✓`;
   chip.classList.toggle('full', full && !failing);
@@ -1302,13 +1323,12 @@ function keywordPanel(k, id) {
     box.appendChild(d);
   }
   if (k.suggestions.length) {
-    box.appendChild(el('p', `Real Google searches for this product that no other Vaxaura product uses (most searched first)${id ? '; click one to preview switching to it' : ''}:`, 'small muted'));
+    box.appendChild(el('p', `Real Google searches for this product that no other Vaxaura product uses (most searched first; ▲▲▲ high, ▲▲ medium, ▲ low demand)${id ? '; click one to preview switching to it' : ''}:`, 'small muted'));
     const chips = el('div', null, 'kw-chips');
     for (const x of k.suggestions) {
       const current = x.kw === k.focus;
-      const c = el(id && !current ? 'button' : 'span', x.kw, 'kw-chip' + (id && !current ? '' : ' static') + (current ? ' on' : ''));
-      c.title = `Suggested by Google ${x.hits} time${x.hits > 1 ? 's' : ''}`;
-      if (id && !current) { c.type = 'button'; c.addEventListener('click', () => openFix(id, x.kw)); }
+      const c = keywordChip(x, { tag: id && !current ? 'button' : 'span', extra: (id && !current ? '' : 'static') + (current ? ' on' : ''), onPick: id && !current ? () => openFix(id, x.kw) : null });
+      c.title = demandText(x);
       chips.appendChild(c);
     }
     box.appendChild(chips);
@@ -1764,11 +1784,42 @@ function renderStore(r) {
   box.appendChild(wrap);
 }
 
+// The products this tool drafted, from the shop itself (any device), under the device's own runs.
+// Asked once per visit to the screen; a product can be checked from the list.
+let shopRunsSeq = 0;
+async function renderShopRuns(box) {
+  const seq = ++shopRunsSeq;
+  box.innerHTML = '';
+  box.appendChild(el('p', 'Looking up the products saved with this tool in the shop…', 'small muted'));
+  let r;
+  try { r = await call('qa', { runs: true }); } catch (err) { if (seq === shopRunsSeq) box.textContent = `Could not list the shop’s drafts: ${err.message}`; return; }
+  if (seq !== shopRunsSeq) return;
+  box.innerHTML = '';
+  box.appendChild(el('h3', `Saved with this tool, from the shop (${r.runs.length})`));
+  if (!r.runs.length) { box.appendChild(el('p', 'No product in the shop carries this tool’s mark yet.', 'small muted')); return; }
+  box.appendChild(el('p', 'Every product this tool created, whichever device it was made on, newest first. “Check” runs the product QA.', 'small muted'));
+  const ul = el('ul', null, 'history');
+  for (const p of r.runs) {
+    const li = el('li');
+    li.append(p.at ? `${new Date(p.at).toLocaleDateString()} · ` : '', link(p.editUrl, `#${p.id} ${p.name}`), ` · ${STATUS[p.status] || p.status}${p.score ? ` · SEO ${p.score} at saving` : ''}${p.keyword ? ` · “${p.keyword}”` : ''} `);
+    const b = el('button', 'Check', 'link-btn'); b.type = 'button';
+    b.addEventListener('click', () => { $('#qa-id').value = String(p.id); $('#qa-form').requestSubmit(); $('#qa-form').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+    li.appendChild(b);
+    ul.appendChild(li);
+  }
+  box.appendChild(ul);
+}
+
 function renderHistory() {
   const box = $('#qa-history');
   box.innerHTML = '';
+  const shopBox = el('div', null, 'shop-runs');
   const list = runs();
-  if (!list.length) { box.appendChild(el('p', 'No drafts saved with this tool on this device yet.', 'small muted')); return; }
+  if (!list.length) {
+    box.append(el('p', 'No drafts saved with this tool on this device yet.', 'small muted'), shopBox);
+    renderShopRuns(shopBox);
+    return;
+  }
   const timed = list.filter((r) => r.ms);
   const avg = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
   const before = list.reduce((n, r) => n + (r.before || 0), 0), after = list.reduce((n, r) => n + (r.after || 0), 0);
@@ -1787,7 +1838,8 @@ function renderHistory() {
     li.textContent = `${new Date(r.at).toLocaleDateString()} · #${r.id} ${r.name} · SEO ${r.score}${r.ms ? ` · ${secs(r.ms)}` : ''}${r.keyword ? ` · “${r.keyword}”` : ''}${q}`;
     ul.appendChild(li);
   }
-  box.appendChild(ul);
+  box.append(el('p', 'Above: the runs made on this device, with their timings. Below: every product the tool saved, from the shop.', 'small muted'), ul, shopBox);
+  renderShopRuns(shopBox);
 }
 
 async function resetWork() {

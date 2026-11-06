@@ -26,10 +26,20 @@ desktops (review form with a sticky score card), in light and dark mode.
    for this kind of product, without "price/Pakistan/daraz/naheed", other brands or keywords another
    Vaxaura product already targets. Each candidate is marked **free** or **overlap** (a shorter or
    longer form is another product's focus keyword), and the searches **taken** by another product
-   are listed with that product. The research screen shows all of this - identification, keyword
-   standing and cannibalization, Daraz/Naheed listings and the price suggestion - as soon as the
-   research is back, while the listing is still being written; the review page shows it again.
-   The focus keyword must be one of the candidates (a free one unless nothing free fits). Categories
+   are listed with that product. Every candidate is **checked with Google** the way the QA checks a
+   saved product (Google offers the phrase itself, or longer searches starting with it): most come
+   straight out of Google's answers, and a candidate that only appeared inside a longer search
+   ("price of jhumka gold earrings" → "jhumka gold earrings") is asked separately (at most 3 per run,
+   for the host's request limit). A phrase Google does not offer is shown crossed out and is never
+   used, so the writer and the QA judge keywords the same way. Each candidate also carries a
+   **demand** tier (▲▲▲ high, ▲▲ medium, ▲ low): Google ranks its suggestions by how much they are
+   searched, so a phrase's place in the answers and the number of longer searches that extend it
+   give its demand against the best candidate (relative; Google gives no monthly volumes for free).
+   The research screen shows all of this - identification, keyword standing, demand and
+   cannibalization, Daraz/Naheed listings and the price suggestion - as soon as the research is back,
+   while the listing is still being written; the review page shows it again.
+   The focus keyword must be one of the candidates (the most specific one with high or medium demand,
+   a free one unless nothing free fits); the secondary keywords come from the candidates too. Categories
    are chosen only when they fit; otherwise a new category is suggested (created when the draft is saved).
 3. **Listing** (`gemini-3.8-flash` first for better copy, falls back to 3.6 Flash / 3.5 Flash-Lite; JSON output): title, slug, short and long description with FAQ,
    categories, tags, suggested price, stock, weight/size, attributes, alt text per photo, Rank Math
@@ -45,7 +55,11 @@ desktops (review form with a sticky score card), in light and dark mode.
    product's (the shop's slugs are compared live; a clash is made unique with "-vaxaura" or
    "-2" before Save, and Save itself refuses a duplicate too). SEO titles stay within 60 characters and keep the
    brand's spelling (ST, L'Oréal). If checks still fail, "Save anyway at SEO N/100" saves anyway.
-   Possible duplicates of existing products are shown before you save.
+   A secondary keyword that is not one of the real searches only warns (no points, nothing blocked).
+   Possible duplicates of existing products are shown before you save: two names are the same item
+   when the words they share carry most of both names' weight, a word weighing more the rarer it is in
+   the shop (six different Ticarto couple watch sets are not one product six times; "Gold Bow Heart
+   Pendant" and "Gold Bow Heart Pendant Necklace" still are).
    **Keyword cannibalization**: the keywords are compared with every product in the shop; a clash
    (the same search would show two Vaxaura pages) must be fixed, an overlap is shown as a warning.
    "Fix with AI" rewrites the listing on the review page around the chosen keyword while keeping
@@ -56,7 +70,9 @@ desktops (review form with a sticky score card), in light and dark mode.
    in the shop (status, content, categories, SKU, price, photo size/format/alt text, Rank Math score,
    real-search keyword, cannibalization), with the run's timings and photo savings. The "QA &
    analytics" screen checks any product by ID, grades the whole shop (average SEO, keyword clashes,
-   photos over 100 KB, SKUs to tidy, placeholder categories) and lists this device's runs.
+   photos over 100 KB, SKUs to tidy, placeholder categories) and lists this device's runs (with their
+   timings) and, from the shop itself, every product the tool saved on any device (each draft carries
+   the meta `vaxaura_drafted_at` and `vaxaura_draft_score`; "Check" runs its QA).
    - **Keyword & URL QA** (`lib/keyword-qa.mjs`), part of every product check (paste the product link,
      e.g. vaxaura.com/product/couple-watches-black-metal-vaxaura/, or its ID): is the focus keyword a real
      Google search (Google's echo of an unsearched phrase does not count), is it in the URL, SEO title,

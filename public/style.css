@@ -139,6 +139,9 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .checks li { position: relative; padding: 4px 0 4px 24px; }
 .checks li::before { position: absolute; left: 0; content: "✓"; color: var(--ok); font-weight: 800; }
 .checks li.fail::before { content: "✕"; color: var(--bad); }
+/* A check that only warns (a made-up secondary keyword): shown, never blocks the save. */
+.checks li.warn::before { content: "!"; color: var(--warn-ink); }
+.checks li.warn { color: var(--warn-ink); }
 .checks li .fix { display: block; color: var(--muted); font-size: .82rem; }
 .side .primary { margin-top: 6px; }
 .side .secondary { margin-top: 8px; }
@@ -369,6 +372,15 @@ body[data-view="qa"] #restored { display: none !important; }
 .kw-report .kw-chips { margin: 0 0 6px; }
 .kw-chip.free { border-color: var(--ok); }
 .kw-chip.overlap { border-color: var(--warn-ink); background: var(--warn-soft); }
+/* Demand mark (▲▲▲ high, ▲▲ medium, ▲ low) and the real-search state of a candidate. */
+.kw-chip .demand { margin-left: 6px; font-size: .6rem; letter-spacing: -1px; color: var(--muted); }
+.kw-chip.on .demand { color: var(--ink); }
+.kw-chip.unsearched { text-decoration: line-through; opacity: .55; cursor: default; border-color: var(--line); background: var(--field); }
+.kw-chip.unverified { border-style: dashed; }
+/* "This tool's runs": the products saved with the tool, from the shop. */
+.shop-runs { margin-top: 14px; }
+.shop-runs h3 { margin: 0 0 4px; font-size: .95rem; }
+.history .link-btn { padding: 0 4px; font-size: .85rem; }
 .kw-why { margin: 4px 0 0; padding: 0; list-style: none; font-size: .84rem; }
 .kw-why li { padding: 2px 0; }
 .kw-why li.warn { color: var(--warn-ink); }

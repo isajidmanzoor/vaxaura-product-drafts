@@ -22,6 +22,27 @@ test('duplicate warning', () => {
   assert.deepEqual(possibleDuplicates('Crystal Butterfly Stud Earrings', products), []);
 });
 
+// Names from vaxaura.com on 2026-11-06: six couple watch sets, different dials and brands.
+test('duplicate warning ignores the words half the shop shares, still catches the same item', () => {
+  const shop = [
+    { id: 591, status: 'publish', name: 'Ticarto Gold Couple Watch Set – Matching Gold Wristwatches' },
+    { id: 587, status: 'publish', name: 'Tissot PRX Couple Watch Set – Silver Dial Wristwatch' },
+    { id: 583, status: 'publish', name: 'White Butterfly Pendant – Gold Chain Butterfly Necklace' },
+    { id: 579, status: 'publish', name: 'Ticarto Blue Dial Silver Couple Watch Set – Matching Wristwatches' },
+    { id: 574, status: 'publish', name: 'Ticarto Two Tone Couple Watch – Gold &amp; Silver Pair' },
+    { id: 570, status: 'publish', name: 'Black Stone Jhumka Earrings – Traditional Jewelry | Gold Jhumka Earrings' },
+    { id: 563, status: 'publish', name: 'Ticarto Couple Watch Silver Black Dial Set – Couple Watches' },
+    { id: 536, status: 'publish', name: 'Leopard Couple Watches Black Metal – Skeleton Dial Watch Set' },
+    { id: 253, status: 'publish', name: 'Gold Bow Heart Pendant' },
+  ];
+  assert.deepEqual(possibleDuplicates('Ticarto Couple Watch Set – Gold Dial Wristwatch', shop), []);
+  // The same watch set listed again under a longer name.
+  assert.equal(possibleDuplicates('Ticarto Gold Couple Watch Set Matching Gold Wristwatches for Him and Her', shop).length, 1);
+  assert.match(possibleDuplicates('Gold Bow Heart Pendant Necklace – Vaxaura Jewellery', shop)[0], /#253/);
+  // Three shared words that are only a small part of the other name (the butterfly necklace) are not enough.
+  assert.deepEqual(possibleDuplicates('Gold Pendant Chain', shop), []);
+});
+
 test('placeholders: 4+ photos use 2-4, fewer photos also place the featured one', async () => {
   const { placeholderList } = await import('../lib/ai.mjs');
   assert.deepEqual(placeholderList(5), ['{{image:2}}', '{{image:3}}', '{{image:4}}']);

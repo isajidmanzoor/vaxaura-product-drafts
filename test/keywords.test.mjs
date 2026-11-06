@@ -183,3 +183,74 @@ test('QA grading of a product', () => {
   assert.equal(by['Long description 200+ words'].status, 'pass');
   assert.equal(g.metrics.photos.length, 4);
 });
+
+// ---------- verified searches and demand ----------
+const { suggestionStats, verifyPool } = await import('../lib/keywords.mjs');
+
+test('a candidate is verified when Google offered it, unknown when it only came out of a longer search', () => {
+  const JHUMKA = { product: 'gold-tone jhumka earrings with black stones', product_type: 'jhumka earrings', key_terms: ['black stone'], details: 'gold tone, black stones' };
+  const pool = keywordPool(counts(['price of jhumka gold earrings', 'jhumka earrings for women', 'jhumka earrings for women gold']), JHUMKA);
+  const by = Object.fromEntries(pool.map((k) => [k.kw, k]));
+  assert.equal(by['jhumka earrings for women'].searched, true); // offered as is
+  assert.equal(by['jhumka gold earrings'].searched, null); // only inside "price of ..."
+  for (const k of pool) assert.ok(['high', 'medium', 'low'].includes(k.tier) && k.demand >= 0 && k.demand <= 100, k.kw);
+});
+
+test('demand follows Google’s ranking: first places and a long tail beat a phrase low in one answer', () => {
+  const lists = [
+    ['couple watches', 'couple watches price in pakistan', 'couple watches set', 'couple watch design', 'leopard watch'],
+    ['couple watches', 'couple watches in pakistan', 'black couple watch set'],
+  ];
+  const pool = keywordPool(suggestionStats(lists), WATCH);
+  const by = Object.fromEntries(pool.map((k) => [k.kw, k]));
+  assert.equal(pool[0].kw, 'couple watches');
+  assert.equal(by['couple watches'].demand, 100);
+  assert.equal(by['couple watches'].tier, 'high');
+  assert.ok(by['leopard watch'].demand < by['couple watches'].demand);
+  assert.equal(by['leopard watch'].tier, 'low');
+  // A plain Map of counts (no places known) still works: every phrase weighs its count.
+  assert.equal(keywordPool(counts(lists.flat()), WATCH)[0].kw, 'couple watches');
+});
+
+test('verifyPool asks Google only about unverified candidates, drops none, puts rejected ones last', async () => {
+  const JHUMKA = { product: 'gold-tone jhumka earrings', product_type: 'jhumka earrings', key_terms: [], details: 'gold tone' };
+  const pool = keywordPool(counts(['price of jhumka gold earrings', 'jhumka earrings for women', 'best jhumka earrings gold']), JHUMKA);
+  const asked = [];
+  const google = { 'jhumka gold earrings': ['jhumka gold earrings design'], 'jhumka earrings gold': [], 'jhumka earrings': ['jhumka earrings for women'] };
+  const out = await verifyPool(pool, async (q) => { asked.push(q); return google[q] || []; });
+  assert.ok(!asked.includes('jhumka earrings for women'), 'already verified: not asked again');
+  const by = Object.fromEntries(out.map((k) => [k.kw, k]));
+  assert.equal(by['jhumka gold earrings'].searched, true); // Google offers a longer search starting with it
+  assert.equal(by['jhumka earrings gold'].searched, false); // neither it nor its shorter form leads to it
+  assert.equal(out.at(-1).kw, 'jhumka earrings gold');
+  assert.equal(out.length, pool.length);
+  // Google down: the candidate stays unknown, nothing throws.
+  const again = await verifyPool(keywordPool(counts(['price of jhumka gold earrings']), JHUMKA), async () => { throw new Error('offline'); });
+  assert.equal(again[0].searched, null);
+});
+
+test('verifyPool asks at most `max` candidates (the host limits outside requests per call)', async () => {
+  const JHUMKA = { product: 'jhumka earrings', product_type: 'jhumka earrings', key_terms: [], details: 'gold silver black red' };
+  const pool = keywordPool(counts(['price of gold jhumka earrings', 'price of silver jhumka earrings', 'price of black jhumka earrings', 'price of red jhumka earrings']), JHUMKA);
+  assert.equal(pool.filter((k) => k.searched == null).length, 4);
+  await verifyPool(pool, async (q) => [q], { max: 2 });
+  assert.equal(pool.filter((k) => k.searched === true).length, 2);
+  assert.equal(pool.filter((k) => k.searched == null).length, 2);
+});
+
+test('the products this tool drafted are listed from the shop, newest first', async () => {
+  const { runsFromProducts } = await import('../lib/qa.mjs');
+  const light = [
+    { id: 1, name: 'Hand-made product', status: 'publish', slug: 'a', permalink: 'https://vaxaura.com/product/a/', meta_data: [{ key: 'rank_math_focus_keyword', value: 'x' }] },
+    { id: 2, name: 'Old tool draft &#8211; Pendant', status: 'draft', slug: 'b', permalink: '', date_created_gmt: '2026-10-01T10:00:00', meta_data: [{ key: 'vaxaura_review_note', value: 'note' }, { key: 'rank_math_focus_keyword', value: 'gold pendant, chain' }] },
+    { id: 3, name: 'New tool draft', status: 'publish', slug: 'c', permalink: 'https://vaxaura.com/product/c/', meta_data: [{ key: 'vaxaura_drafted_at', value: '2026-11-05T09:00:00.000Z' }, { key: 'vaxaura_draft_score', value: '100' }, { key: 'rank_math_focus_keyword', value: 'couple watch set' }] },
+  ];
+  const runs = runsFromProducts(light, 'https://vaxaura.com');
+  assert.deepEqual(runs.map((r) => r.id), [3, 2]);
+  assert.equal(runs[0].score, 100);
+  assert.equal(runs[0].keyword, 'couple watch set');
+  assert.equal(runs[0].editUrl, 'https://vaxaura.com/wp-admin/post.php?post=3&action=edit');
+  assert.equal(runs[1].name, 'Old tool draft – Pendant');
+  assert.equal(runs[1].at, '2026-10-01T10:00:00');
+  assert.equal(runs[1].score, null);
+});

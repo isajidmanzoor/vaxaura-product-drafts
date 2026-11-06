@@ -222,6 +222,35 @@ test('index status in chunks: at most ten URLs per call, errors kept per URL', a
   forgetConsole();
 });
 
+test('index status: at most three inspections in flight, a timed-out one is tried once more', async () => {
+  forgetConsole();
+  let inFlight = 0, most = 0;
+  const tries = {};
+  const timeout = () => { const e = new Error('The operation was aborted due to timeout'); e.name = 'TimeoutError'; throw e; };
+  const fetchFn = async (u, init) => {
+    const json = (status, data) => ({ ok: status < 300, status, json: async () => data });
+    if (u === acct.token_uri) return json(200, { access_token: 't', expires_in: 3600 });
+    const body = JSON.parse(init.body);
+    if (body.siteUrl === 'sc-domain:vaxaura.com') return json(403, { error: { message: 'no' } });
+    inFlight++; most = Math.max(most, inFlight);
+    await new Promise((res) => setTimeout(res, 5));
+    inFlight--;
+    tries[body.inspectionUrl] = (tries[body.inspectionUrl] || 0) + 1;
+    if (body.inspectionUrl.endsWith('/slow/') && tries[body.inspectionUrl] === 1) timeout();
+    if (body.inspectionUrl.endsWith('/dead/')) timeout();
+    return json(200, { inspectionResult: { indexStatusResult: { verdict: 'PASS', coverageState: 'Submitted and indexed' } } });
+  };
+  const urls = [...Array.from({ length: 8 }, (_, i) => `https://vaxaura.com/product/p-${i}/`), 'https://vaxaura.com/product/slow/', 'https://vaxaura.com/product/dead/'];
+  const r = await inspectMany(urls, { env, fetchFn, now: Date.UTC(2026, 10, 6) });
+  assert.equal(most, 3, 'three side by side after the first');
+  assert.equal(r.results['https://vaxaura.com/product/slow/'].indexed, true, 'second try answered');
+  assert.equal(tries['https://vaxaura.com/product/slow/'], 2);
+  assert.equal(tries['https://vaxaura.com/product/dead/'], 2, 'one more try, not more');
+  assert.equal(tries['https://vaxaura.com/product/p-3/'], 1);
+  assert.match(r.results['https://vaxaura.com/product/dead/'].error, /timeout/);
+  forgetConsole();
+});
+
 test('the sitemaps Google has: submitted, last read, indexed counts (Sitemaps API)', async () => {
   forgetConsole();
   const { sitemapsSummary, sitemapsStatus } = await import('../lib/console.mjs');

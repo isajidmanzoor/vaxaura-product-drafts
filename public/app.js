@@ -1906,7 +1906,9 @@ function renderStore(r) {
   const tableBox = el('div');
   box.appendChild(tableBox);
   indexQueue.length = 0; // a new report: checks queued for the old one are dropped
-  indexCtx = withGoogle ? { allUrls: liveUrls, tile: indexTile, tableBox } : null;
+  const indexAll = el('button', `Check Google’s index for all ${liveUrls.length} live products`, 'secondary small-fix'); indexAll.type = 'button'; indexAll.hidden = true;
+  indexAll.addEventListener('click', () => queueIndex(liveUrls));
+  indexCtx = withGoogle ? { allUrls: liveUrls, tile: indexTile, tableBox, button: indexAll } : null;
   // 25 products a page, a search box and an "only with issues" filter; Google's index is asked for
   // the page on screen (remembered per URL, so paging back costs nothing).
   paginate(tableBox, r.products, {
@@ -1955,11 +1957,7 @@ function renderStore(r) {
     },
     onPage: withGoogle ? (items) => queueIndex(items.filter((p) => p.status === 'publish' && p.url).map((p) => p.url), { first: true }) : null,
   });
-  if (withGoogle && liveUrls.length > 25) {
-    const all = el('button', `Check Google’s index for all ${liveUrls.length} live products`, 'secondary small-fix'); all.type = 'button';
-    all.addEventListener('click', () => { all.disabled = true; queueIndex(liveUrls); });
-    box.appendChild(all);
-  }
+  if (withGoogle) { box.appendChild(indexAll); indexTally(); }
 }
 
 // Google's index status, remembered per URL for the session and asked ten products per request
@@ -1974,22 +1972,28 @@ function paintIndexCell(td, s) {
   if (s.indexed) { td.textContent = '✓ indexed'; td.className = 'ok'; td.title = `${s.coverage}${s.lastCrawl ? ` · last crawled ${String(s.lastCrawl).slice(0, 10)}` : ''}`; }
   else { td.textContent = `✗ ${s.coverage || 'not indexed'}`; td.className = 'bad'; td.title = s.lastCrawl ? `last crawled ${String(s.lastCrawl).slice(0, 10)}` : 'not crawled yet'; }
 }
+const indexKnown = (u) => INDEX_CACHE.has(u) && !INDEX_CACHE.get(u).error;
 function indexTally() {
-  const { allUrls, tile } = indexCtx || {};
+  const { allUrls, tile, button } = indexCtx || {};
   if (!tile) return;
-  const known = allUrls.filter((u) => INDEX_CACHE.has(u) && !INDEX_CACHE.get(u).error);
+  const known = allUrls.filter(indexKnown);
   const missing = known.filter((u) => !INDEX_CACHE.get(u).indexed).length;
   const failed = allUrls.filter((u) => INDEX_CACHE.get(u)?.error).length;
-  const waiting = indexQueue.length;
+  const waiting = indexQueue.length + (indexBusy ? 1 : 0);
   tile.querySelector('strong').textContent = String(missing);
-  tile.querySelector('span').textContent = `products not in Google’s index (${known.length} of ${allUrls.length} checked${failed ? `, ${failed} could not be checked` : ''}${waiting ? `, ${waiting} checking…` : ''})`;
+  tile.querySelector('span').textContent = `products not in Google’s index (${known.length} of ${allUrls.length} checked${failed ? `, ${failed} could not be checked` : ''}${waiting ? ', checking…' : ''})`;
   tile.classList.toggle('bad', missing > 0);
+  if (button) { // the rest of the shop on request; a check that failed (Google timed out) can be retried
+    const left = allUrls.filter((u) => !indexKnown(u) && !indexQueue.includes(u)).length;
+    button.hidden = !left || !!waiting;
+    button.textContent = failed ? `Retry the ${failed} that could not be checked${left > failed ? ` and check the other ${left - failed}` : ''}` : `Check Google’s index for all ${allUrls.length} live products`;
+  }
 }
 function queueIndex(urls, { first = false } = {}) {
-  const fresh = urls.filter((u) => !INDEX_CACHE.has(u) && !indexQueue.includes(u));
+  const fresh = urls.filter((u) => !indexKnown(u) && !indexQueue.includes(u));
   if (first) indexQueue.unshift(...fresh); else indexQueue.push(...fresh);
-  indexTally();
   if (!indexBusy && indexQueue.length) drainIndex();
+  indexTally();
 }
 async function drainIndex() {
   indexBusy = true;

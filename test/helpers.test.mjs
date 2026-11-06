@@ -9,17 +9,21 @@ test('a product page gives its photos: og:image first, Daraz resized copies fold
     <img src="https://img.drz.lazcdn.com/g/tps/images/ims-web/logo-daraz.png">
     <script>window.__data={"images":[{"url":"https:\\/\\/img.drz.lazcdn.com\\/static\\/pk\\/p\\/017ec8b93cab70837ad51a1acc542031.jpg_120x120q80.jpg"},
       {"url":"https:\\/\\/img.drz.lazcdn.com\\/static\\/pk\\/p\\/017ec8b93cab70837ad51a1acc542031.jpg_720x720q80.jpg"},
-      {"url":"https:\\/\\/img.drz.lazcdn.com\\/static\\/pk\\/p\\/47744ac0f53d4415d306b65dffde34af.jpg_720x720q80.jpg"}]}</script>
-    <img src="//cdn.example.com/photos/side.webp?v=2"> <img src="/media/back.png"> <img src="https://x.com/sprite.png">
+      {"url":"https:\\/\\/img.drz.lazcdn.com\\/static\\/pk\\/p\\/47744ac0f53d4415d306b65dffde34af.jpg_720x720q80.jpg"},
+      {"zoom":"https:\\/\\/static-01.daraz.pk\\/p\\/47744ac0f53d4415d306b65dffde34af.jpg"}]}</script>
+    <img src="//cdn.example.com/photos/side.webp?v=2"> <img src="/media/voucher-once.png"> <img src="https://x.com/sprite.png">
     </body></html>`;
+  // og:image first; the gallery photos (listed more than once: thumbnail, large, zoom, even under
+  // two hosts) folded into one original each; the one-off voucher and the sprite left out.
   assert.deepEqual(pagePhotos(html, 'https://www.daraz.pk/products/x.html'), [
     'https://laz-img-sg.alicdn.com/p/39243b91b8cc1fc204d6fdee175787b9.jpg',
     'https://img.drz.lazcdn.com/static/pk/p/017ec8b93cab70837ad51a1acc542031.jpg',
     'https://img.drz.lazcdn.com/static/pk/p/47744ac0f53d4415d306b65dffde34af.jpg',
     'https://cdn.example.com/photos/side.webp?v=2',
-    'https://www.daraz.pk/media/back.png',
   ]);
-  const many = Array.from({ length: 10 }, (_, i) => `<img src="https://s.com/p${i}.jpg">`).join('');
+  // A supplier page that lists each photo once keeps them all (relative addresses resolved), up to the cap.
+  assert.deepEqual(pagePhotos('<img src="/a/front.jpg"><img src="/a/back.jpg">', 'https://s.com/p/'), ['https://s.com/a/front.jpg', 'https://s.com/a/back.jpg']);
+  const many = Array.from({ length: 12 }, (_, i) => `<img src="https://s.com/p${i}.jpg">`).join('');
   assert.equal(pagePhotos(many, 'https://s.com/').length, PAGE_PHOTOS);
   assert.deepEqual(pagePhotos('<html><body>no photos</body></html>', 'https://s.com/'), []);
   assert.equal(isPage('text/html; charset=utf-8'), true);

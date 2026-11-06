@@ -27,28 +27,37 @@ export const mayBePhoto = (headerType) => {
 };
 export const isPage = (headerType) => /^(text\/html|application\/xhtml\+xml)$/.test(String(headerType || '').split(';')[0].trim().toLowerCase());
 const PAGE_MAX = 3 * 1024 * 1024;
-export const PAGE_PHOTOS = 6;
+export const PAGE_PHOTOS = 8;
 
 // The product photos on a shop page (Daraz, a supplier site...): the page's og:image first, then
 // every JPG/PNG/WebP address in the page, with Daraz's resized copies ("...jpg_720x720q80.jpg")
 // folded into the original and logos, icons and sprites left out. At most PAGE_PHOTOS, in page order.
 export function pagePhotos(html, pageUrl) {
   const text = String(html || '').replace(/\\\//g, '/').replace(/&amp;/g, '&');
-  const found = [];
-  const add = (raw) => {
+  const seen = new Map(); // key -> { url, n, og }
+  const add = (raw, og = false) => {
     let u = raw.trim();
     if (u.startsWith('//')) u = 'https:' + u;
     else if (!/^https?:\/\//i.test(u)) { try { u = new URL(u, pageUrl).href; } catch { return; } }
     u = u.replace(/\.(jpe?g|png|webp)_\d+x\d+q\d+\.(?:jpe?g|png|webp)$/i, '.$1'); // Daraz resized copy -> original
-    if (/(^|[/_.-])(logo|icon|favicon|sprite|badge|flag|avatar|banner|placeholder|loading|blank|pixel)([/_.-]|$)/i.test(u.split('?')[0])) return;
+    const path = u.split('?')[0];
+    if (/(^|[/_.-])(logo|icon|favicon|sprite|badge|flag|avatar|banner|placeholder|loading|blank|pixel|tps|imgextra)([/_.-]|$)/i.test(path)) return;
     if (!/\.(jpe?g|png|webp)(\?|$)/i.test(u)) return;
-    if (!found.includes(u)) found.push(u);
+    // The same photo under two hosts (Daraz: static-01.daraz.pk/p/<hash>.jpg and img.drz.lazcdn.com/static/pk/p/<hash>.jpg): one entry.
+    const file = path.split('/').pop().toLowerCase();
+    const key = file.replace(/\.[a-z0-9]+$/, '').length >= 20 ? file : u;
+    const hit = seen.get(key);
+    if (hit) { hit.n++; hit.og ||= og; } else seen.set(key, { url: u, n: 1, og });
   };
-  for (const m of text.matchAll(/<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)(?::secure_url)?["'][^>]+content=["']([^"']+)["']/gi)) add(m[1]);
-  for (const m of text.matchAll(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:image|twitter:image)(?::secure_url)?["']/gi)) add(m[1]);
+  for (const m of text.matchAll(/<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)(?::secure_url)?["'][^>]+content=["']([^"']+)["']/gi)) add(m[1], true);
+  for (const m of text.matchAll(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:image|twitter:image)(?::secure_url)?["']/gi)) add(m[1], true);
   for (const m of text.matchAll(/(?:https?:)?\/\/[^\s"'<>()\\]+?\.(?:jpe?g|png|webp)(?:_\d+x\d+q\d+\.(?:jpe?g|png|webp))?(?:\?[^\s"'<>()\\]*)?(?=["'\s<>()\\,]|$)/gi)) add(m[0]);
   for (const m of text.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)) add(m[1]); // relative addresses too
-  return found.slice(0, PAGE_PHOTOS);
+  // Gallery photos are listed more than once (thumbnail, large, zoom); a badge or voucher once.
+  // When the page has repeated ones, the one-offs are left out; og:image always stays first.
+  const all = [...seen.values()];
+  const repeated = all.some((x) => x.n > 1 && !x.og);
+  return all.filter((x) => x.og || !repeated || x.n > 1).sort((a, b) => Number(b.og) - Number(a.og)).map((x) => x.url).slice(0, PAGE_PHOTOS);
 }
 
 export function isPrivate(ip) {
